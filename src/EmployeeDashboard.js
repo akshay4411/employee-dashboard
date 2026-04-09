@@ -138,12 +138,15 @@ export default function EmployeeDashboard() {
   // ── filter options ─────────────────────────────────────────────────────────
   const uniq = useCallback((key) => {
     return ["All", ...new Set(employees.map((r) => r[key]).filter(Boolean))];
-  }, [employees]);  const projects  = useMemo(() => uniq("Project Name"),                     [employees]);
-  const locations = useMemo(() => uniq("Location/City"),                    [employees]);
-  const types     = useMemo(() => uniq("Emp Type"),                         [employees]);
-  const grades    = useMemo(() => uniq("Grade"),                            [employees]);
-  const functions = useMemo(() => uniq("Function (Sub SU) - Sub Function"), [employees]);
-  const billings  = useMemo(() => uniq("Billing Model"),                    [employees]);
+  }, [employees]);  
+  const projects  = useMemo(() => uniq("Project Name"), [uniq]);
+  const locations = useMemo(() => uniq("Location/City"), [uniq]);
+  const types     = useMemo(() => uniq("Emp Type"), [uniq]);
+  const grades    = useMemo(() => uniq("Grade"), [uniq]);
+  const functions = useMemo(() => uniq("Function (Sub SU) - Sub Function"), [uniq]);
+  const billings  = useMemo(() => uniq("Billing Model"), [uniq]);
+
+  
 
   const clearAll = () => {
     setFProject("All"); setFLocation("All"); setFType("All"); setFGrade("All");
@@ -181,9 +184,9 @@ export default function EmployeeDashboard() {
       .map(([name, count]) => ({ name, count }));
   }, [filtered]);
 
-  const byProject  = useMemo(() => grp("Project Name"),                     [filtered]);
-  const byLocation = useMemo(() => grp("Location/City"),                    [filtered]);
-  const byFunction = useMemo(() => grp("Function (Sub SU) - Sub Function"), [filtered]);
+  const byProject  = useMemo(() => grp("Project Name"), [grp]);
+  const byLocation = useMemo(() => grp("Location/City"), [grp]);
+  const byFunction = useMemo(() => grp("Function (Sub SU) - Sub Function"), [grp]);
 
   const revenueByProject = useMemo(() => {
     const m = {};
