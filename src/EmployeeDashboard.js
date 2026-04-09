@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
@@ -131,12 +131,14 @@ export default function EmployeeDashboard() {
   };
   useEffect(load, []);
 
-  // ── unique employees (latest mapping per ID) ───────────────────────────────
+  // ── unique employees (latest mapping per ID) ─────────────────────
+  // ──────────
   const employees = useMemo(() => latestPerEmployee(rawRows), [rawRows]);
 
   // ── filter options ─────────────────────────────────────────────────────────
-  const uniq = (key) => ["All", ...new Set(employees.map((r) => r[key]).filter(Boolean))];
-  const projects  = useMemo(() => uniq("Project Name"),                     [employees]);
+  const uniq = useCallback((key) => {
+    return ["All", ...new Set(employees.map((r) => r[key]).filter(Boolean))];
+  }, [employees]);  const projects  = useMemo(() => uniq("Project Name"),                     [employees]);
   const locations = useMemo(() => uniq("Location/City"),                    [employees]);
   const types     = useMemo(() => uniq("Emp Type"),                         [employees]);
   const grades    = useMemo(() => uniq("Grade"),                            [employees]);
@@ -168,11 +170,16 @@ export default function EmployeeDashboard() {
   const totalRev = filtered.reduce((s, r) => s + (Number(r["Bill Rate"]) || 0), 0);
 
   // ── chart data ─────────────────────────────────────────────────────────────
-  const grp = (key) => {
+  const grp = useCallback((key) => {
     const m = {};
-    filtered.forEach((r) => { const k = r[key] || "Unknown"; m[k] = (m[k] || 0) + 1; });
-    return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
-  };
+    filtered.forEach((r) => {
+      const k = r[key] || "Unknown";
+      m[k] = (m[k] || 0) + 1;
+    });
+    return Object.entries(m)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [filtered]);
 
   const byProject  = useMemo(() => grp("Project Name"),                     [filtered]);
   const byLocation = useMemo(() => grp("Location/City"),                    [filtered]);
