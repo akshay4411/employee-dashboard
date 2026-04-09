@@ -1,0 +1,125 @@
+/* ===== GLOBAL ===== */
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: #eef1f5;
+}
+
+/* ===== HEADER ===== */
+.dashboard-header {
+  background: linear-gradient(90deg, #2f5597, #3b6bbf);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 12px;
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 15px;
+}
+
+/* ===== CONTAINER ===== */
+.dashboard-container {
+  padding: 20px;
+}
+
+/* ===== FILTER PANEL ===== */
+.filters {
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 12px;
+  width: 220px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.filters select {
+  width: 100%;
+  padding: 6px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+}
+
+/* ===== KPI CARDS ===== */
+.kpi-row {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.card {
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 12px;
+  flex: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.card h4 {
+  margin: 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.card h2 {
+  margin-top: 5px;
+  font-size: 22px;
+  font-weight: bold;
+}
+
+/* ===== MAIN GRID ===== */
+.main-grid {
+  display: flex;
+  gap: 15px;
+}
+
+/* ===== CHART BOX ===== */
+.box {
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 12px;
+  flex: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.box h4 {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #374151;
+}
+
+/* ===== TABLE ===== */
+.table-container {
+  margin-top: 20px;
+  background: #ffffff;
+  padding: 15px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  background: #2f5597;
+  color: white;
+  padding: 8px;
+  font-size: 13px;
+}
+
+td {
+  padding: 8px;
+  font-size: 13px;
+  border-bottom: 1px solid #eee;
+}
+
+/* ===== STATUS COLORS ===== */
+.status-billable {
+  color: #00b050;
+  font-weight: bold;
+}
+
+.status-bench {
+  color: #c00000;
+  font-weight: bold;
+}
