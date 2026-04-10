@@ -8,7 +8,7 @@ import {
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbxAkN7YAgKtvLfeOXg7J6wflXMqJ27e08bwOdirTH-V4IB3KSGK2JGochP49vtYs9W3/exec";
+  "https://script.google.com/macros/s/AKfycbyqaBYwAe6nWtp29xrOTT-nWQYEfwILpaSJ31VOtAv7cWdvexdy-r9-edPj7vSMxTvW/exec";
 
 // ─── PALETTE ─────────────────────────────────────────────────────────────────
 const P = {
@@ -215,7 +215,7 @@ const ExportBtn = ({ onClick, icon, label, color }) => (
 );
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
-export default function EmployeeDashboard() {
+export default function EmployeeDashboard({ user = {}, onLogout }) {
   const [rawRows,  setRawRows]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
@@ -413,6 +413,14 @@ export default function EmployeeDashboard() {
           <div style={{ fontSize: 10, color: "rgba(255,255,255,.55)" }}>
             {total} employees · {rawRows.length} records
           </div>
+          {user?.movateId && (
+            <div style={{ display:"flex", alignItems:"center", gap:6,
+              background:"rgba(255,255,255,.1)", borderRadius:6,
+              padding:"4px 10px", fontSize:11 }}>
+              <span style={{ fontSize:14 }}>👤</span>
+              <span style={{ color:"#fff", fontWeight:600 }}>{user.name || user.movateId}</span>
+            </div>
+          )}
           <button onClick={load} style={{ background: "rgba(255,255,255,.15)",
             border: "1px solid rgba(255,255,255,.3)", color: "#fff",
             borderRadius: 5, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>
@@ -427,6 +435,13 @@ export default function EmployeeDashboard() {
               fontWeight:  tab === t ? 700    : 400,
             }}>{t}{t === "Detailed View" ? " ▾" : ""}</button>
           ))}
+          {onLogout && (
+            <button onClick={onLogout} style={{
+              background:"rgba(229,57,53,.25)", border:"1px solid rgba(229,57,53,.5)",
+              color:"#fff", borderRadius:5, padding:"3px 10px", fontSize:11,
+              cursor:"pointer", fontWeight:600,
+            }}>⎋ Logout</button>
+          )}
         </div>
       </div>
 
