@@ -91,11 +91,26 @@ const TABLE_COLS = [
   { label: "Location",        key: "Location/City"                       },
   { label: "Grade",           key: "Grade"                               },
   { label: "Billing Model",   key: "Billing Model"                       },
-  { label: "Emp Type",        key: "Emp Type"                            },
-  { label: "DOJ",             key: "DOJ"                                 },
-  { label: "DOE",             key: "DOE"                                 },
-  { label: "Resigned",        key: "__resigned"                          },
+  { label: "Emp Type",             key: "Emp Type"                       },
+  { label: "DOJ",                  key: "DOJ"                            },
+  { label: "DOE",                  key: "DOE"                            },
+  { label: "Active/Inactive",      key: "Active/Inactive"                },
+  { label: "Nokia Ramp Date",      key: "Nokia Ramp Date"                },
+  { label: "Nokia Ramp Down Date", key: "Nokia Ramp down Date"           },
+  { label: "Nokia LWD",            key: "Nokia LWD"                      },
+  { label: "Ramp Down Issue Date", key: "Ramp down issue Date"           },
+  { label: "Bench Start Date",     key: "Bench start Date"               },
+  { label: "Bench End Date",       key: "Bench End Date"                 },
+  { label: "SR No",                key: "SR NO"                          },
+  { label: "Resigned",             key: "__resigned"                     },
 ];
+
+// Keys whose values should be formatted as dates in exports
+const DATE_KEYS = new Set([
+  "DOJ", "DOE",
+  "Nokia Ramp Date", "Nokia Ramp down Date", "Nokia LWD",
+  "Ramp down issue Date", "Bench start Date", "Bench End Date",
+]);
 
 function buildExportRows(data) {
   return data.map((r) => {
@@ -103,7 +118,7 @@ function buildExportRows(data) {
     TABLE_COLS.forEach(({ label, key }) => {
       if (key === "__resigned") {
         row[label] = hasResigned(r) ? "Yes" : "No";
-      } else if (key === "DOJ" || key === "DOE") {
+      } else if (DATE_KEYS.has(key)) {
         row[label] = fmtDate(r[key]);
       } else {
         row[label] = r[key] ?? "";
@@ -782,8 +797,14 @@ export default function EmployeeDashboard({ user = {}, onLogout }) {
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10 }}>
               <thead>
                 <tr style={{ background:P.dark, color:"#fff" }}>
-                  {["Emp ID","Emp Name","Project","Function","Status","Bill Rate","Location",
-                    "Grade","Billing Model","DOJ","DOE","Employment"].map((h) => (
+                  {[
+                    "SR No","Emp ID","Emp Name","Project","Function","Status",
+                    "Bill Rate","Location","Grade","Billing Model",
+                    "Active/Inactive","DOJ","DOE",
+                    "Nokia Ramp Date","Nokia Ramp Down Date","Nokia LWD",
+                    "Ramp Down Issue Date","Bench Start Date","Bench End Date",
+                    "Employment",
+                  ].map((h) => (
                     <th key={h} style={{ padding:"6px 10px", textAlign:"left",
                       fontWeight:600, fontSize:10, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
@@ -799,18 +820,36 @@ export default function EmployeeDashboard({ user = {}, onLogout }) {
                       style={{ background: retired ? "#fdf6ff" : (even ? P.card : P.stripe) }}
                       onMouseEnter={(ev) => (ev.currentTarget.style.background = "#e8f0fe")}
                       onMouseLeave={(ev) => (ev.currentTarget.style.background = retired ? "#fdf6ff" : (even ? P.card : P.stripe))}>
+
+                      {/* SR No */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, textAlign:"center", fontWeight:600 }}>
+                        {e["SR NO"] || "—"}
+                      </td>
+
+                      {/* Emp ID */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
                         color:P.muted, fontFamily:"monospace" }}>{e["Emp ID"]}</td>
+
+                      {/* Emp Name */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
                         fontWeight:600 }}>{e["Emp Name"]}</td>
+
+                      {/* Project */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         {e["Project Name"]}</td>
+
+                      {/* Function */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         {e["Function (Sub SU) - Sub Function"]}</td>
+
+                      {/* Status */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         <span style={{ padding:"2px 7px", borderRadius:3, fontSize:9, fontWeight:700,
                           background:st==="Billable"?P.blue2:P.red, color:"#fff" }}>{st}</span>
                       </td>
+
+                      {/* Bill Rate */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         {Number(e["Bill Rate"]) > 0
                           ? <span style={{ fontWeight:600, color:P.green }}>
@@ -818,21 +857,87 @@ export default function EmployeeDashboard({ user = {}, onLogout }) {
                             </span>
                           : <span style={{ color:"#bbb" }}>—</span>}
                       </td>
+
+                      {/* Location */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         {e["Location/City"]}</td>
+
+                      {/* Grade */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         <span style={{ background:"#e3eaf5", color:P.dark, padding:"2px 6px",
                           borderRadius:3, fontSize:9, fontWeight:700 }}>{e["Grade"]}</span>
                       </td>
+
+                      {/* Billing Model */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         {e["Billing Model"]}</td>
+
+                      {/* Active / Inactive */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
+                        {e["Active/Inactive"] ? (
+                          <span style={{
+                            padding:"2px 7px", borderRadius:3, fontSize:9, fontWeight:700,
+                            background: String(e["Active/Inactive"]).toLowerCase() === "active"
+                              ? "#e8f5e9" : "#f5f5f5",
+                            color: String(e["Active/Inactive"]).toLowerCase() === "active"
+                              ? P.green : P.muted,
+                            border: `1px solid ${
+                              String(e["Active/Inactive"]).toLowerCase() === "active"
+                                ? "#a5d6a7" : "#ddd"}`,
+                          }}>
+                            {e["Active/Inactive"]}
+                          </span>
+                        ) : <span style={{ color:"#bbb" }}>—</span>}
+                      </td>
+
+                      {/* DOJ */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
                         color:P.muted, whiteSpace:"nowrap" }}>{fmtDate(e["DOJ"])}</td>
+
+                      {/* DOE */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
                         color: retired ? P.purple : "#bbb", fontWeight: retired ? 600 : 400,
                         whiteSpace:"nowrap" }}>
                         {retired ? fmtDate(e["DOE"]) : "—"}
                       </td>
+
+                      {/* Nokia Ramp Date */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, whiteSpace:"nowrap" }}>
+                        {fmtDate(e["Nokia Ramp Date"])}
+                      </td>
+
+                      {/* Nokia Ramp Down Date */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, whiteSpace:"nowrap" }}>
+                        {fmtDate(e["Nokia Ramp down Date"])}
+                      </td>
+
+                      {/* Nokia LWD */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, whiteSpace:"nowrap" }}>
+                        {fmtDate(e["Nokia LWD"])}
+                      </td>
+
+                      {/* Ramp Down Issue Date */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, whiteSpace:"nowrap" }}>
+                        {fmtDate(e["Ramp down issue Date"])}
+                      </td>
+
+                      {/* Bench Start Date */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, whiteSpace:"nowrap" }}>
+                        {fmtDate(e["Bench start Date"])}
+                      </td>
+
+                      {/* Bench End Date */}
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, whiteSpace:"nowrap" }}>
+                        {fmtDate(e["Bench End Date"])}
+                      </td>
+
+                      {/* Employment status (Active / Resigned) */}
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         {retired
                           ? <span style={{ padding:"2px 7px", borderRadius:3, fontSize:9, fontWeight:700,
@@ -849,7 +954,7 @@ export default function EmployeeDashboard({ user = {}, onLogout }) {
                   );
                 })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={12} style={{ textAlign:"center", padding:24, color:P.muted }}>
+                  <tr><td colSpan={20} style={{ textAlign:"center", padding:24, color:P.muted }}>
                     No employees match the current filters.
                   </td></tr>
                 )}
