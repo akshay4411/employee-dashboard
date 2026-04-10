@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
@@ -46,6 +46,16 @@ function latestPerEmployee(rows) {
   });
   return [...map.values()];
 }
+
+// Moved outside component so useMemo deps are stable (fixes react-hooks/exhaustive-deps)
+const uniq = (arr, key) =>
+  ["All", ...new Set(arr.map((r) => r[key]).filter(Boolean))];
+
+const grp = (arr, key) => {
+  const m = {};
+  arr.forEach((r) => { const k = r[key] || "Unknown"; m[k] = (m[k] || 0) + 1; });
+  return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
+};
 
 const fmt = (n) => {
   if (n >= 1e7) return "₹" + (n / 1e7).toFixed(2) + " Cr";
@@ -131,22 +141,16 @@ export default function EmployeeDashboard() {
   };
   useEffect(load, []);
 
-  // ── unique employees (latest mapping per ID) ─────────────────────
-  // ──────────
+  // ── unique employees (latest mapping per ID) ───────────────────────────────
   const employees = useMemo(() => latestPerEmployee(rawRows), [rawRows]);
 
   // ── filter options ─────────────────────────────────────────────────────────
-  const uniq = useCallback((key) => {
-    return ["All", ...new Set(employees.map((r) => r[key]).filter(Boolean))];
-  }, [employees]);  
-  const projects  = useMemo(() => uniq("Project Name"), [uniq]);
-  const locations = useMemo(() => uniq("Location/City"), [uniq]);
-  const types     = useMemo(() => uniq("Emp Type"), [uniq]);
-  const grades    = useMemo(() => uniq("Grade"), [uniq]);
-  const functions = useMemo(() => uniq("Function (Sub SU) - Sub Function"), [uniq]);
-  const billings  = useMemo(() => uniq("Billing Model"), [uniq]);
-
-  
+  const projects  = useMemo(() => uniq(employees, "Project Name"),                     [employees]);
+  const locations = useMemo(() => uniq(employees, "Location/City"),                    [employees]);
+  const types     = useMemo(() => uniq(employees, "Emp Type"),                         [employees]);
+  const grades    = useMemo(() => uniq(employees, "Grade"),                            [employees]);
+  const functions = useMemo(() => uniq(employees, "Function (Sub SU) - Sub Function"), [employees]);
+  const billings  = useMemo(() => uniq(employees, "Billing Model"),                    [employees]);
 
   const clearAll = () => {
     setFProject("All"); setFLocation("All"); setFType("All"); setFGrade("All");
@@ -173,20 +177,9 @@ export default function EmployeeDashboard() {
   const totalRev = filtered.reduce((s, r) => s + (Number(r["Bill Rate"]) || 0), 0);
 
   // ── chart data ─────────────────────────────────────────────────────────────
-  const grp = useCallback((key) => {
-    const m = {};
-    filtered.forEach((r) => {
-      const k = r[key] || "Unknown";
-      m[k] = (m[k] || 0) + 1;
-    });
-    return Object.entries(m)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
-  }, [filtered]);
-
-  const byProject  = useMemo(() => grp("Project Name"), [grp]);
-  const byLocation = useMemo(() => grp("Location/City"), [grp]);
-  const byFunction = useMemo(() => grp("Function (Sub SU) - Sub Function"), [grp]);
+  const byProject  = useMemo(() => grp(filtered, "Project Name"),                     [filtered]);
+  const byLocation = useMemo(() => grp(filtered, "Location/City"),                    [filtered]);
+  const byFunction = useMemo(() => grp(filtered, "Function (Sub SU) - Sub Function"), [filtered]);
 
   const revenueByProject = useMemo(() => {
     const m = {};
