@@ -1,4 +1,6 @@
+// npm install xlsx        ← required for Export Excel
 import { useState, useEffect, useMemo } from "react";
+import * as XLSX from "xlsx";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
@@ -18,6 +20,7 @@ const P = {
   red:    "#e53935",
   green:  "#2e7d32",
   orange: "#e65100",
+  purple: "#6a1b9a",
   muted:  "#6b7a8d",
   bg:     "#f0f4f8",
   card:   "#ffffff",
@@ -26,7 +29,7 @@ const P = {
 };
 const BAR_COLORS = [P.blue1, P.blue2, P.blue3, P.blue4, "#64B5F6", "#90CAF9"];
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── PURE HELPERS (outside component — stable refs, no ESLint dep warnings) ──
 function normaliseRows(raw) {
   if (Array.isArray(raw)) return raw;
   if (raw?.data  && Array.isArray(raw.data))   return raw.data;
@@ -47,7 +50,14 @@ function latestPerEmployee(rows) {
   return [...map.values()];
 }
 
-// Moved outside component so useMemo deps are stable (fixes react-hooks/exhaustive-deps)
+// An employee has resigned if DOE (Date of Exit) is a non-empty, valid date
+function hasResigned(row) {
+  const doe = row["DOE"];
+  if (!doe) return false;
+  const d = new Date(doe);
+  return !isNaN(d.getTime());
+}
+
 const uniq = (arr, key) =>
   ["All", ...new Set(arr.map((r) => r[key]).filter(Boolean))];
 
@@ -63,7 +73,81 @@ const fmt = (n) => {
   return "₹" + n.toLocaleString("en-IN");
 };
 
-// ─── SHARED UI ───────────────────────────────────────────────────────────────
+const fmtDate = (val) => {
+  if (!val) return "—";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+// ─── EXPORT HELPERS ───────────────────────────────────────────────────────────
+const TABLE_COLS = [
+  { label: "Emp ID",          key: "Emp ID"                              },
+  { label: "Emp Name",        key: "Emp Name"                            },
+  { label: "Project",         key: "Project Name"                        },
+  { label: "Function",        key: "Function (Sub SU) - Sub Function"    },
+  { label: "Status",          key: "Status (Billable / Bench)"           },
+  { label: "Bill Rate (₹)",   key: "Bill Rate"                           },
+  { label: "Location",        key: "Location/City"                       },
+  { label: "Grade",           key: "Grade"                               },
+  { label: "Billing Model",   key: "Billing Model"                       },
+  { label: "Emp Type",        key: "Emp Type"                            },
+  { label: "DOJ",             key: "DOJ"                                 },
+  { label: "DOE",             key: "DOE"                                 },
+  { label: "Resigned",        key: "__resigned"                          },
+];
+
+function buildExportRows(data) {
+  return data.map((r) => {
+    const row = {};
+    TABLE_COLS.forEach(({ label, key }) => {
+      if (key === "__resigned") {
+        row[label] = hasResigned(r) ? "Yes" : "No";
+      } else if (key === "DOJ" || key === "DOE") {
+        row[label] = fmtDate(r[key]);
+      } else {
+        row[label] = r[key] ?? "";
+      }
+    });
+    return row;
+  });
+}
+
+function exportCSV(data, filename = "employee_data.csv") {
+  const rows  = buildExportRows(data);
+  const headers = TABLE_COLS.map((c) => c.label);
+  const csvLines = [
+    headers.join(","),
+    ...rows.map((r) =>
+      headers.map((h) => {
+        const val = String(r[h] ?? "").replace(/"/g, '""');
+        return val.includes(",") || val.includes("\n") ? `"${val}"` : val;
+      }).join(",")
+    ),
+  ];
+  const blob = new Blob(["\uFEFF" + csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportExcel(data, filename = "employee_data.xlsx") {
+  const rows = buildExportRows(data);
+  const ws   = XLSX.utils.json_to_sheet(rows);
+
+  // Column widths
+  ws["!cols"] = TABLE_COLS.map(({ label }) => ({ wch: Math.max(label.length + 2, 14) }));
+
+  // Header style (xlsx-js-style not needed — basic xlsx supports fill via cell style)
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Employee Data");
+  XLSX.writeFile(wb, filename);
+}
+
+// ─── SHARED UI COMPONENTS ─────────────────────────────────────────────────────
 function DonutGauge({ pct, color = P.green }) {
   const r = 22, circ = 2 * Math.PI * r, dash = (Math.min(pct, 100) / 100) * circ;
   return (
@@ -95,8 +179,10 @@ const TTip = ({ active, payload, label, pre = "", suf = "" }) => {
 const Card = ({ title, children }) => (
   <div style={{ background: P.card, borderRadius: 8, padding: 12,
     boxShadow: "0 1px 4px rgba(0,0,0,.08)" }}>
-    {title && <div style={{ fontSize: 11, fontWeight: 700, color: P.dark, marginBottom: 8,
-      paddingBottom: 5, borderBottom: `1px solid ${P.bg}` }}>{title}</div>}
+    {title && (
+      <div style={{ fontSize: 11, fontWeight: 700, color: P.dark, marginBottom: 8,
+        paddingBottom: 5, borderBottom: `1px solid ${P.bg}` }}>{title}</div>
+    )}
     {children}
   </div>
 );
@@ -114,13 +200,28 @@ const FSelect = ({ label, value, onChange, options }) => (
   </div>
 );
 
-// ─── MAIN ────────────────────────────────────────────────────────────────────
+const ExportBtn = ({ onClick, icon, label, color }) => (
+  <button onClick={onClick} style={{
+    display: "flex", alignItems: "center", gap: 5,
+    padding: "5px 12px", borderRadius: 5, cursor: "pointer", fontSize: 11,
+    fontWeight: 600, border: `1px solid ${color}`,
+    background: color, color: "#fff", transition: "opacity .15s",
+  }}
+    onMouseEnter={(e) => (e.currentTarget.style.opacity = ".85")}
+    onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+  >
+    <span>{icon}</span> {label}
+  </button>
+);
+
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function EmployeeDashboard() {
   const [rawRows,  setRawRows]  = useState([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState(null);
   const [tab,      setTab]      = useState("Summary");
 
+  // Filters
   const [fProject,  setFProject]  = useState("All");
   const [fLocation, setFLocation] = useState("All");
   const [fType,     setFType]     = useState("All");
@@ -128,10 +229,11 @@ export default function EmployeeDashboard() {
   const [fFunction, setFFunction] = useState("All");
   const [fBilling,  setFBilling]  = useState("All");
   const [fStatus,   setFStatus]   = useState("All");
+  const [fResigned, setFResigned] = useState("All"); // "All" | "Active" | "Resigned"
   const [search,    setSearch]    = useState("");
   const [showSrch,  setShowSrch]  = useState(false);
 
-  // ── fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch data ──────────────────────────────────────────────────────────────
   const load = () => {
     setLoading(true); setError(null);
     fetch(`${GAS_URL}?t=${Date.now()}`)
@@ -141,10 +243,10 @@ export default function EmployeeDashboard() {
   };
   useEffect(load, []);
 
-  // ── unique employees (latest mapping per ID) ───────────────────────────────
+  // ── Derive unique employees (latest mapping row per ID) ────────────────────
   const employees = useMemo(() => latestPerEmployee(rawRows), [rawRows]);
 
-  // ── filter options ─────────────────────────────────────────────────────────
+  // ── Dropdown options ────────────────────────────────────────────────────────
   const projects  = useMemo(() => uniq(employees, "Project Name"),                     [employees]);
   const locations = useMemo(() => uniq(employees, "Location/City"),                    [employees]);
   const types     = useMemo(() => uniq(employees, "Emp Type"),                         [employees]);
@@ -154,32 +256,38 @@ export default function EmployeeDashboard() {
 
   const clearAll = () => {
     setFProject("All"); setFLocation("All"); setFType("All"); setFGrade("All");
-    setFFunction("All"); setFBilling("All"); setFStatus("All"); setSearch("");
+    setFFunction("All"); setFBilling("All"); setFStatus("All");
+    setFResigned("All"); setSearch("");
   };
 
-  // ── filtered set ───────────────────────────────────────────────────────────
-  const filtered = useMemo(() => employees.filter((r) =>
-    (fProject  === "All" || r["Project Name"]                     === fProject)  &&
-    (fLocation === "All" || r["Location/City"]                    === fLocation) &&
-    (fType     === "All" || r["Emp Type"]                         === fType)     &&
-    (fGrade    === "All" || r["Grade"]                            === fGrade)    &&
-    (fFunction === "All" || r["Function (Sub SU) - Sub Function"] === fFunction) &&
-    (fBilling  === "All" || r["Billing Model"]                    === fBilling)  &&
-    (fStatus   === "All" || r["Status (Billable / Bench)"]        === fStatus)   &&
-    (!search   || (r["Emp Name"]||"").toLowerCase().includes(search.toLowerCase()))
-  ), [employees, fProject, fLocation, fType, fGrade, fFunction, fBilling, fStatus, search]);
+  // ── Filtered employees ──────────────────────────────────────────────────────
+  const filtered = useMemo(() => employees.filter((r) => {
+    if (fProject  !== "All" && r["Project Name"]                     !== fProject)  return false;
+    if (fLocation !== "All" && r["Location/City"]                    !== fLocation) return false;
+    if (fType     !== "All" && r["Emp Type"]                         !== fType)     return false;
+    if (fGrade    !== "All" && r["Grade"]                            !== fGrade)    return false;
+    if (fFunction !== "All" && r["Function (Sub SU) - Sub Function"] !== fFunction) return false;
+    if (fBilling  !== "All" && r["Billing Model"]                    !== fBilling)  return false;
+    if (fStatus   !== "All" && r["Status (Billable / Bench)"]        !== fStatus)   return false;
+    if (fResigned === "Resigned" && !hasResigned(r)) return false;
+    if (fResigned === "Active"   &&  hasResigned(r)) return false;
+    if (search && !(r["Emp Name"] || "").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  }), [employees, fProject, fLocation, fType, fGrade, fFunction, fBilling, fStatus, fResigned, search]);
 
-  // ── KPIs ───────────────────────────────────────────────────────────────────
+  // ── KPIs ────────────────────────────────────────────────────────────────────
   const total    = filtered.length;
   const billable = filtered.filter((r) => r["Status (Billable / Bench)"] === "Billable").length;
   const bench    = total - billable;
   const billPct  = total > 0 ? (billable / total) * 100 : 0;
   const totalRev = filtered.reduce((s, r) => s + (Number(r["Bill Rate"]) || 0), 0);
+  const resigned = filtered.filter(hasResigned).length;
+  const active   = total - resigned;
 
-  // ── chart data ─────────────────────────────────────────────────────────────
-  const byProject  = useMemo(() => grp(filtered, "Project Name"),                     [filtered]);
-  const byLocation = useMemo(() => grp(filtered, "Location/City"),                    [filtered]);
-  const byFunction = useMemo(() => grp(filtered, "Function (Sub SU) - Sub Function"), [filtered]);
+  // ── Chart data ──────────────────────────────────────────────────────────────
+  const byProject        = useMemo(() => grp(filtered, "Project Name"),                     [filtered]);
+  const byLocation       = useMemo(() => grp(filtered, "Location/City"),                    [filtered]);
+  const byFunction       = useMemo(() => grp(filtered, "Function (Sub SU) - Sub Function"), [filtered]);
 
   const revenueByProject = useMemo(() => {
     const m = {};
@@ -205,14 +313,38 @@ export default function EmployeeDashboard() {
       .map(([month, count]) => ({ month, count }));
   }, [rawRows]);
 
+  // Resigned trend by month of DOE
+  const resignedTrend = useMemo(() => {
+    const m = {};
+    employees.filter(hasResigned).forEach((r) => {
+      const dt = new Date(r["DOE"]);
+      if (isNaN(dt)) return;
+      const k = dt.toLocaleString("en", { month: "short", year: "2-digit" });
+      m[k] = (m[k] || 0) + 1;
+    });
+    return Object.entries(m)
+      .sort((a, b) => new Date("1 " + a[0]) - new Date("1 " + b[0]))
+      .map(([month, count]) => ({ month, count }));
+  }, [employees]);
+
   const donutData = [
     { name: "Billable", value: billable },
     { name: "Bench",    value: bench    },
   ];
 
-  // ── status toggle pill ─────────────────────────────────────────────────────
+  const attritionData = [
+    { name: "Active",   value: active   },
+    { name: "Resigned", value: resigned },
+  ];
+
+  // ── Export ──────────────────────────────────────────────────────────────────
+  const ts = new Date().toISOString().slice(0, 10);
+  const handleExportCSV   = () => exportCSV(filtered,   `employees_${ts}.csv`);
+  const handleExportExcel = () => exportExcel(filtered, `employees_${ts}.xlsx`);
+
+  // ── Status toggle pill ──────────────────────────────────────────────────────
   const StatusPill = ({ st }) => {
-    const on = fStatus === st;
+    const on     = fStatus === st;
     const isBill = st === "Billable";
     return (
       <span onClick={() => setFStatus(on ? "All" : st)} style={{
@@ -225,7 +357,20 @@ export default function EmployeeDashboard() {
     );
   };
 
-  // ── loading / error ────────────────────────────────────────────────────────
+  const ResignedPill = ({ label, val }) => {
+    const on = fResigned === val;
+    return (
+      <span onClick={() => setFResigned(on ? "All" : val)} style={{
+        padding: "2px 9px", borderRadius: 3, fontSize: 10, fontWeight: 700,
+        cursor: "pointer", transition: "all .15s",
+        background: on ? P.purple : "#f3e5f5",
+        color:      on ? "#fff"   : P.purple,
+        border: `1px solid #ce93d8`,
+      }}>{label}</span>
+    );
+  };
+
+  // ── Loading / Error states ──────────────────────────────────────────────────
   if (loading) return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center",
       justifyContent: "center", height: "70vh", background: P.bg,
@@ -233,7 +378,7 @@ export default function EmployeeDashboard() {
       <div style={{ width: 46, height: 46, border: `5px solid ${P.border}`,
         borderTop: `5px solid ${P.blue2}`, borderRadius: "50%",
         animation: "spin .8s linear infinite" }} />
-      <div style={{ color: P.muted, fontSize: 13 }}>Fetching dashboard data from Google Sheets…</div>
+      <div style={{ color: P.muted, fontSize: 13 }}>Fetching dashboard data…</div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -247,14 +392,12 @@ export default function EmployeeDashboard() {
         <div style={{ fontWeight: 700, color: "#856404", marginBottom: 6 }}>Failed to load data</div>
         <div style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>{error}</div>
         <button onClick={load} style={{ padding: "7px 20px", background: P.blue2, color: "#fff",
-          border: "none", borderRadius: 5, cursor: "pointer", fontWeight: 600 }}>
-          ↻ Retry
-        </button>
+          border: "none", borderRadius: 5, cursor: "pointer", fontWeight: 600 }}>↻ Retry</button>
       </div>
     </div>
   );
 
-  // ── RENDER ─────────────────────────────────────────────────────────────────
+  // ── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div style={{ fontFamily: "'Segoe UI',sans-serif", background: P.bg,
       minHeight: "100vh", color: P.dark, fontSize: 12 }}>
@@ -275,7 +418,7 @@ export default function EmployeeDashboard() {
             borderRadius: 5, padding: "3px 10px", fontSize: 11, cursor: "pointer" }}>
             ↻ Refresh
           </button>
-          {["Summary", "Detailed View"].map((t) => (
+          {["Summary","Detailed View"].map((t) => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: "4px 13px", borderRadius: 4, cursor: "pointer", fontSize: 11,
               border: "1px solid rgba(255,255,255,.35)",
@@ -289,49 +432,92 @@ export default function EmployeeDashboard() {
 
       <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
 
-        {/* ── KPI ROW ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
-          {[
-            { accent:P.dark,   icon:"👥", bg:"#e3eaf5", label:"Total Employees",
-              val:<>{total}</>, sub:`${rawRows.length} total records` },
-            { accent:P.blue2,  icon:"✅", bg:"#e3f2fd", label:"Billable Employees",
-              val:<span style={{color:P.blue1}}>{billable}</span>, sub:"Active on projects" },
-            { accent:P.red,    icon:"⏸️", bg:"#fdecea", label:"Bench Employees",
-              val:<span style={{color:P.red}}>{bench}</span>, sub:"Awaiting assignment" },
-            null, // donut card
-            { accent:P.orange, icon:"💰", bg:"#fff3e0", label:"Total Bill Rate",
-              val:<span style={{fontSize:13, color:P.orange}}>{fmt(totalRev)}</span>,
-              sub:"Sum of current bill rates" },
-          ].map((k, i) => {
-            if (i === 3) return (
-              <div key={i} style={{ background:P.card, borderRadius:8, padding:"10px 12px",
-                boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
-                gap:10, borderLeft:`3px solid ${P.green}` }}>
-                <DonutGauge pct={billPct} color={P.green} />
-                <div>
-                  <div style={{ fontSize:10, color:P.muted, fontWeight:500, marginBottom:1 }}>Billable %</div>
-                  <div style={{ fontSize:20, fontWeight:800, color:P.green, lineHeight:1 }}>
-                    {billPct.toFixed(1)}%
-                  </div>
-                  <div style={{ fontSize:9, color:"#aaa", marginTop:2 }}>of active workforce</div>
-                </div>
+        {/* ── KPI ROW (6 cards) ── */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 8 }}>
+
+          {/* Total */}
+          <div style={{ background:P.card, borderRadius:8, padding:"10px 12px",
+            boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
+            gap:10, borderLeft:`3px solid ${P.dark}` }}>
+            <div style={{ width:36,height:36,borderRadius:7,background:"#e3eaf5",
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>👥</div>
+            <div>
+              <div style={{ fontSize:10,color:P.muted,fontWeight:500,marginBottom:1 }}>Total Employees</div>
+              <div style={{ fontSize:20,fontWeight:800,lineHeight:1 }}>{total}</div>
+              <div style={{ fontSize:9,color:"#aaa",marginTop:2 }}>{rawRows.length} total records</div>
+            </div>
+          </div>
+
+          {/* Billable */}
+          <div style={{ background:P.card, borderRadius:8, padding:"10px 12px",
+            boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
+            gap:10, borderLeft:`3px solid ${P.blue2}` }}>
+            <div style={{ width:36,height:36,borderRadius:7,background:"#e3f2fd",
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>✅</div>
+            <div>
+              <div style={{ fontSize:10,color:P.muted,fontWeight:500,marginBottom:1 }}>Billable</div>
+              <div style={{ fontSize:20,fontWeight:800,lineHeight:1,color:P.blue1 }}>{billable}</div>
+              <div style={{ fontSize:9,color:"#aaa",marginTop:2 }}>Active on projects</div>
+            </div>
+          </div>
+
+          {/* Bench */}
+          <div style={{ background:P.card, borderRadius:8, padding:"10px 12px",
+            boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
+            gap:10, borderLeft:`3px solid ${P.red}` }}>
+            <div style={{ width:36,height:36,borderRadius:7,background:"#fdecea",
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>⏸️</div>
+            <div>
+              <div style={{ fontSize:10,color:P.muted,fontWeight:500,marginBottom:1 }}>Bench</div>
+              <div style={{ fontSize:20,fontWeight:800,lineHeight:1,color:P.red }}>{bench}</div>
+              <div style={{ fontSize:9,color:"#aaa",marginTop:2 }}>Awaiting assignment</div>
+            </div>
+          </div>
+
+          {/* Billable % donut */}
+          <div style={{ background:P.card, borderRadius:8, padding:"10px 12px",
+            boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
+            gap:10, borderLeft:`3px solid ${P.green}` }}>
+            <DonutGauge pct={billPct} color={P.green} />
+            <div>
+              <div style={{ fontSize:10,color:P.muted,fontWeight:500,marginBottom:1 }}>Billable %</div>
+              <div style={{ fontSize:20,fontWeight:800,lineHeight:1,color:P.green }}>
+                {billPct.toFixed(1)}%
               </div>
-            );
-            return (
-              <div key={i} style={{ background:P.card, borderRadius:8, padding:"10px 12px",
-                boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
-                gap:10, borderLeft:`3px solid ${k.accent}` }}>
-                <div style={{ width:36, height:36, borderRadius:7, background:k.bg,
-                  display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:16, flexShrink:0 }}>{k.icon}</div>
-                <div>
-                  <div style={{ fontSize:10, color:P.muted, fontWeight:500, marginBottom:1 }}>{k.label}</div>
-                  <div style={{ fontSize:20, fontWeight:800, lineHeight:1 }}>{k.val}</div>
-                  <div style={{ fontSize:9, color:"#aaa", marginTop:2 }}>{k.sub}</div>
-                </div>
+              <div style={{ fontSize:9,color:"#aaa",marginTop:2 }}>of active workforce</div>
+            </div>
+          </div>
+
+          {/* Resigned */}
+          <div style={{ background:P.card, borderRadius:8, padding:"10px 12px",
+            boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
+            gap:10, borderLeft:`3px solid ${P.purple}`,
+            cursor:"pointer", transition:"box-shadow .15s" }}
+            onClick={() => setFResigned(fResigned === "Resigned" ? "All" : "Resigned")}
+            title="Click to filter resigned employees">
+            <div style={{ width:36,height:36,borderRadius:7,background:"#f3e5f5",
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>🚪</div>
+            <div>
+              <div style={{ fontSize:10,color:P.muted,fontWeight:500,marginBottom:1 }}>Resigned</div>
+              <div style={{ fontSize:20,fontWeight:800,lineHeight:1,color:P.purple }}>{resigned}</div>
+              <div style={{ fontSize:9,color:"#aaa",marginTop:2 }}>
+                {total > 0 ? ((resigned/total)*100).toFixed(1) : 0}% attrition rate
               </div>
-            );
-          })}
+            </div>
+          </div>
+
+          {/* Revenue */}
+          <div style={{ background:P.card, borderRadius:8, padding:"10px 12px",
+            boxShadow:"0 1px 4px rgba(0,0,0,.08)", display:"flex", alignItems:"center",
+            gap:10, borderLeft:`3px solid ${P.orange}` }}>
+            <div style={{ width:36,height:36,borderRadius:7,background:"#fff3e0",
+              display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>💰</div>
+            <div>
+              <div style={{ fontSize:10,color:P.muted,fontWeight:500,marginBottom:1 }}>Total Bill Rate</div>
+              <div style={{ fontSize:13,fontWeight:800,lineHeight:1,color:P.orange }}>{fmt(totalRev)}</div>
+              <div style={{ fontSize:9,color:"#aaa",marginTop:2 }}>Sum of current rates</div>
+            </div>
+          </div>
         </div>
 
         {/* ── ROW 2: Filters + BvB + By Project ── */}
@@ -352,6 +538,14 @@ export default function EmployeeDashboard() {
               <div style={{ display:"flex", gap:5 }}>
                 <StatusPill st="Billable" />
                 <StatusPill st="Bench"    />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize:9, fontWeight:700, color:P.muted, textTransform:"uppercase",
+                letterSpacing:.6, marginBottom:4 }}>Employment</div>
+              <div style={{ display:"flex", gap:5 }}>
+                <ResignedPill label="Active"   val="Active"   />
+                <ResignedPill label="Resigned" val="Resigned" />
               </div>
             </div>
             <button onClick={clearAll} style={{ marginTop:2, padding:"4px 0", background:P.bg,
@@ -375,7 +569,7 @@ export default function EmployeeDashboard() {
                   <div style={{ fontSize:12, fontWeight:800, color:P.dark }}>{billPct.toFixed(1)}%</div>
                   <div style={{ fontSize:9, color:"#888" }}>Billable</div>
                 </div>
-                {[["Billable",P.blue2],["Bench",P.red]].map(([l,c])=>(
+                {[["Billable",P.blue2],["Bench",P.red]].map(([l,c]) => (
                   <div key={l} style={{ display:"flex", alignItems:"center", gap:4,
                     fontSize:9, color:"#555", marginTop:3 }}>
                     <span style={{ width:7,height:7,borderRadius:"50%",background:c,display:"inline-block" }}/>
@@ -404,7 +598,7 @@ export default function EmployeeDashboard() {
             </div>
           </Card>
 
-          {/* BY PROJECT */}
+          {/* EMPLOYEES BY PROJECT */}
           <Card title="Employees by Project">
             <ResponsiveContainer width="100%" height={135}>
               <BarChart layout="vertical" data={byProject} margin={{top:0,right:28,bottom:0,left:10}}>
@@ -420,7 +614,7 @@ export default function EmployeeDashboard() {
           </Card>
         </div>
 
-        {/* ── ROW 3: Location + Revenue + Trend ── */}
+        {/* ── ROW 3: Location + Revenue + Attrition donut ── */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
 
           <Card title="Employees by Location">
@@ -451,8 +645,49 @@ export default function EmployeeDashboard() {
             </ResponsiveContainer>
           </Card>
 
+          {/* ATTRITION */}
+          <Card title="Attrition Overview">
+            <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+              <div style={{ flexShrink:0 }}>
+                <PieChart width={105} height={105}>
+                  <Pie data={attritionData} cx={50} cy={50} innerRadius={30} outerRadius={48}
+                    dataKey="value" startAngle={90} endAngle={-270} paddingAngle={3}>
+                    {attritionData.map((_, i) => <Cell key={i} fill={[P.green, P.purple][i]} />)}
+                  </Pie>
+                </PieChart>
+                <div style={{ textAlign:"center", marginTop:-6 }}>
+                  <div style={{ fontSize:12, fontWeight:800, color:P.purple }}>{resigned}</div>
+                  <div style={{ fontSize:9, color:"#888" }}>Resigned</div>
+                </div>
+              </div>
+              <div style={{ flex:1, display:"flex", flexDirection:"column", gap:10 }}>
+                {[["Active", active, P.green], ["Resigned", resigned, P.purple]].map(([l,v,c]) => (
+                  <div key={l}>
+                    <div style={{ display:"flex", justifyContent:"space-between",
+                      fontSize:10, marginBottom:3 }}>
+                      <span style={{ color:P.muted, fontWeight:600 }}>{l}</span>
+                      <span style={{ fontWeight:700, color:c }}>{v}</span>
+                    </div>
+                    <div style={{ height:6, background:"#eee", borderRadius:3 }}>
+                      <div style={{ height:6, background:c, borderRadius:3,
+                        width: total > 0 ? `${(v/total)*100}%` : "0%" }} />
+                    </div>
+                  </div>
+                ))}
+                {resignedTrend.length > 0 && (
+                  <div style={{ fontSize:9, color:P.muted, marginTop:4 }}>
+                    Most recent exits: {resignedTrend.slice(-2).map((d) => `${d.count} in ${d.month}`).join(", ")}
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* ── ROW 4: Trend + Resigned Trend ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           <Card title="Mapping Activity Trend">
-            <ResponsiveContainer width="100%" height={130}>
+            <ResponsiveContainer width="100%" height={120}>
               <LineChart data={trendData} margin={{top:5,right:10,bottom:5,left:0}}>
                 <XAxis dataKey="month" tick={{fontSize:9}} axisLine={false} tickLine={false} />
                 <YAxis tick={{fontSize:9}} axisLine={false} tickLine={false} />
@@ -463,10 +698,29 @@ export default function EmployeeDashboard() {
               </LineChart>
             </ResponsiveContainer>
           </Card>
+
+          <Card title="Resignations by Month (DOE)">
+            <ResponsiveContainer width="100%" height={120}>
+              {resignedTrend.length > 0 ? (
+                <BarChart data={resignedTrend} margin={{top:5,right:10,bottom:5,left:0}}>
+                  <XAxis dataKey="month" tick={{fontSize:9}} axisLine={false} tickLine={false} />
+                  <YAxis tick={{fontSize:9}} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <CartesianGrid vertical={false} stroke={P.bg} />
+                  <Tooltip content={<TTip suf=" resignations" />} />
+                  <Bar dataKey="count" fill={P.purple} radius={[4,4,0,0]} />
+                </BarChart>
+              ) : (
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+                  height:120, color:P.muted, fontSize:11 }}>
+                  No resignation data (no DOE values found)
+                </div>
+              )}
+            </ResponsiveContainer>
+          </Card>
         </div>
 
-        {/* ── ROW 4: Function + Employee Table ── */}
-        <div style={{ display:"grid", gridTemplateColumns:"200px 1fr", gap:10 }}>
+        {/* ── ROW 5: Function + Employee Table ── */}
+        <div style={{ display:"grid", gridTemplateColumns:"190px 1fr", gap:10 }}>
 
           <Card title="By Function">
             <ResponsiveContainer width="100%" height={155}>
@@ -485,10 +739,11 @@ export default function EmployeeDashboard() {
           {/* EMPLOYEE TABLE */}
           <div style={{ background:P.card, borderRadius:8, padding:12,
             boxShadow:"0 1px 4px rgba(0,0,0,.08)", overflowX:"auto" }}>
-            <div style={{ fontSize:11, fontWeight:700, color:P.dark, marginBottom:7,
-              display:"flex", alignItems:"center", justifyContent:"space-between",
-              paddingBottom:5, borderBottom:`1px solid ${P.bg}` }}>
-              <span>Employee Details</span>
+
+            {/* Table header bar */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+              marginBottom:7, paddingBottom:7, borderBottom:`1px solid ${P.bg}` }}>
+              <div style={{ fontSize:11, fontWeight:700, color:P.dark }}>Employee Details</div>
               <div style={{ display:"flex", alignItems:"center", gap:8 }}>
                 {showSrch && (
                   <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
@@ -500,12 +755,20 @@ export default function EmployeeDashboard() {
                   onClick={() => { setShowSrch(!showSrch); setSearch(""); }}>🔍</span>
                 <span style={{ fontSize:10, color:P.muted, background:P.bg,
                   padding:"2px 8px", borderRadius:4 }}>{filtered.length} records</span>
+
+                {/* Export Buttons */}
+                <ExportBtn onClick={handleExportCSV}
+                  icon="📄" label="Export CSV"   color="#546e7a" />
+                <ExportBtn onClick={handleExportExcel}
+                  icon="📊" label="Export Excel" color={P.green} />
               </div>
             </div>
+
             <table style={{ width:"100%", borderCollapse:"collapse", fontSize:10 }}>
               <thead>
                 <tr style={{ background:P.dark, color:"#fff" }}>
-                  {["Emp ID","Emp Name","Project","Function","Status","Bill Rate","Location","Grade","Billing Model"].map((h)=>(
+                  {["Emp ID","Emp Name","Project","Function","Status","Bill Rate","Location",
+                    "Grade","Billing Model","DOJ","DOE","Employment"].map((h) => (
                     <th key={h} style={{ padding:"6px 10px", textAlign:"left",
                       fontWeight:600, fontSize:10, whiteSpace:"nowrap" }}>{h}</th>
                   ))}
@@ -513,18 +776,20 @@ export default function EmployeeDashboard() {
               </thead>
               <tbody>
                 {filtered.map((e, i) => {
-                  const st = e["Status (Billable / Bench)"];
-                  const even = i % 2 === 0;
+                  const st      = e["Status (Billable / Bench)"];
+                  const retired = hasResigned(e);
+                  const even    = i % 2 === 0;
                   return (
                     <tr key={`${e["Emp ID"]}-${i}`}
-                      style={{ background: even ? P.card : P.stripe }}
+                      style={{ background: retired ? "#fdf6ff" : (even ? P.card : P.stripe) }}
                       onMouseEnter={(ev) => (ev.currentTarget.style.background = "#e8f0fe")}
-                      onMouseLeave={(ev) => (ev.currentTarget.style.background = even ? P.card : P.stripe)}>
+                      onMouseLeave={(ev) => (ev.currentTarget.style.background = retired ? "#fdf6ff" : (even ? P.card : P.stripe))}>
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
                         color:P.muted, fontFamily:"monospace" }}>{e["Emp ID"]}</td>
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
                         fontWeight:600 }}>{e["Emp Name"]}</td>
-                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>{e["Project Name"]}</td>
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
+                        {e["Project Name"]}</td>
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         {e["Function (Sub SU) - Sub Function"]}</td>
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
@@ -538,17 +803,38 @@ export default function EmployeeDashboard() {
                             </span>
                           : <span style={{ color:"#bbb" }}>—</span>}
                       </td>
-                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>{e["Location/City"]}</td>
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
+                        {e["Location/City"]}</td>
                       <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
                         <span style={{ background:"#e3eaf5", color:P.dark, padding:"2px 6px",
                           borderRadius:3, fontSize:9, fontWeight:700 }}>{e["Grade"]}</span>
                       </td>
-                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>{e["Billing Model"]}</td>
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
+                        {e["Billing Model"]}</td>
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color:P.muted, whiteSpace:"nowrap" }}>{fmtDate(e["DOJ"])}</td>
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}`,
+                        color: retired ? P.purple : "#bbb", fontWeight: retired ? 600 : 400,
+                        whiteSpace:"nowrap" }}>
+                        {retired ? fmtDate(e["DOE"]) : "—"}
+                      </td>
+                      <td style={{ padding:"5px 10px", borderBottom:`1px solid ${P.bg}` }}>
+                        {retired
+                          ? <span style={{ padding:"2px 7px", borderRadius:3, fontSize:9, fontWeight:700,
+                              background:"#f3e5f5", color:P.purple, border:`1px solid #ce93d8` }}>
+                              🚪 Resigned
+                            </span>
+                          : <span style={{ padding:"2px 7px", borderRadius:3, fontSize:9, fontWeight:700,
+                              background:"#e8f5e9", color:P.green, border:`1px solid #a5d6a7` }}>
+                              ✓ Active
+                            </span>
+                        }
+                      </td>
                     </tr>
                   );
                 })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} style={{ textAlign:"center", padding:24, color:P.muted }}>
+                  <tr><td colSpan={12} style={{ textAlign:"center", padding:24, color:P.muted }}>
                     No employees match the current filters.
                   </td></tr>
                 )}
