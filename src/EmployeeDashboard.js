@@ -8,7 +8,7 @@ import {
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbyqaBYwAe6nWtp29xrOTT-nWQYEfwILpaSJ31VOtAv7cWdvexdy-r9-edPj7vSMxTvW/exec";
+  "https://script.google.com/macros/s/AKfycbw-h7lkxPLFV2yIQOZ6Rkk7OuE_T4FsB7Gce-BN3_hPzSpsbEtYBKguxr4AAWdVi_rO3Q/exec";
 
 // ─── PALETTE ─────────────────────────────────────────────────────────────────
 const P = {
