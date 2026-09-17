@@ -4,7 +4,7 @@ import { useState } from "react";
 
 // Reuse the same Apps Script Web App URL your dashboard already calls.
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxAkN7YAgKtvLfeOXg7J6wflXMqJ27e08bwOdirTH-V4IB3KSGK2JGochP49vtYs9W3/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyjRE5vC0WRnUzulCwQ1JoKYWmcrhWVwFJp1iH756Pe_5-tF5oNni4Lb0hO2YP9ZXHW/exec";
 
 // ─── PALETTE (matches EmployeeDashboard.jsx) ──────────────────────────────
 
