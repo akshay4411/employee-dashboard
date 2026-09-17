@@ -2,98 +2,149 @@ import { useState } from "react";
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 
-// Reuse the same Apps Script Web App URL your dashboard already calls.
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxfVYY72tVANTHlO7iyNn2SfQeH0YQl-d1rsGBZaYJnC5NOiu2oiqsFNlOlCkLjIgyC/exec";
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyjRE5vC0WRnUzulCwQ1JoKYWmcrhWVwFJp1iH756Pe_5-tF5oNni4Lb0hO2YP9ZXHW/exec";
+// ─── MOVATE TOKENS ─────────────────────────────────────────────────────────
 
-// ─── PALETTE (matches EmployeeDashboard.jsx) ──────────────────────────────
+// Sunset gradient lifted from the Movate mark: red → orange → magenta.
 
-const P = {
+const M = {
 
-  dark: "#1e3a5f",
+  red: "#E5342B",
 
-  blue1: "#1565C0",
+  orange: "#F7941D",
 
-  blue2: "#1976D2",
+  pink: "#EC1E79",
 
-  red: "#e53935",
+  ink: "#1A1B20",
 
-  green: "#2e7d32",
+  slate: "#5B5E68",
 
-  muted: "#6b7a8d",
+  hair: "#E7E4E0",
 
-  bg: "#f0f4f8",
+  paper: "#FAF9F7",
 
-  card: "#ffffff",
+  card: "#FFFFFF",
 
-  border: "#dde3ea",
+  ok: "#1E8E5A",
 
 };
+
+const GRADIENT = `linear-gradient(100deg, ${M.red} 0%, ${M.orange} 52%, ${M.pink} 100%)`;
 
 const REASON_OPTIONS = ["RAM DOWN", "RESIGNED", "ABSCOND"];
 
-const FIELD_LABEL = {
+const emptyForm = { movateId: "", name: "", lwd: "", reason: "", project: "", lm: "" };
 
-  fontSize: 11,
+// ─── Logomark: abstract chevron "M", not a reproduction of the Movate asset ─
 
-  fontWeight: 700,
+function Mark({ size = 30 }) {
 
-  color: P.muted,
+  return (
+<svg width={size} height={size} viewBox="0 0 40 40" fill="none">
+<defs>
+<linearGradient id="mkGrad" x1="0" y1="40" x2="40" y2="0">
+<stop offset="0%" stopColor={M.red} />
+<stop offset="55%" stopColor={M.orange} />
+<stop offset="100%" stopColor={M.pink} />
+</linearGradient>
+</defs>
+<path
 
-  marginBottom: 4,
+        d="M3 34 L11 6 L20 24 L29 6 L37 34"
 
-  display: "block",
+        stroke="url(#mkGrad)"
 
-};
+        strokeWidth="5.5"
 
-const INPUT_STYLE = {
+        strokeLinecap="round"
+
+        strokeLinejoin="round"
+
+        fill="none"
+
+      />
+</svg>
+
+  );
+
+}
+
+function Field({ label, hint, children }) {
+
+  return (
+<label style={{ display: "block" }}>
+<span style={{ fontSize: 12, fontWeight: 600, color: M.ink, marginBottom: 6, display: "block" }}>
+
+        {label}
+
+        {hint && <span style={{ fontWeight: 400, color: M.slate }}> · {hint}</span>}
+</span>
+
+      {children}
+</label>
+
+  );
+
+}
+
+function useFocusStyle(base) {
+
+  const [focused, setFocused] = useState(false);
+
+  const style = {
+
+    ...base,
+
+    borderColor: focused ? M.orange : M.hair,
+
+    boxShadow: focused ? `0 0 0 3px ${M.orange}22` : "none",
+
+  };
+
+  return [style, { onFocus: () => setFocused(true), onBlur: () => setFocused(false) }];
+
+}
+
+const BASE_INPUT = {
 
   width: "100%",
 
-  padding: "8px 10px",
+  padding: "10px 12px",
 
-  fontSize: 13,
+  fontSize: 14,
 
-  border: `1px solid ${P.border}`,
+  border: "1px solid",
 
-  borderRadius: 6,
+  borderRadius: 8,
 
   outline: "none",
 
-  color: P.dark,
+  color: M.ink,
 
   background: "#fff",
 
   boxSizing: "border-box",
 
-};
+  transition: "border-color .15s, box-shadow .15s",
 
-const emptyForm = {
-
-  movateId: "",
-
-  name: "",
-
-  lwd: "",
-
-  reason: "",
-
-  project: "",
-
-  lm: "",
+  fontFamily: "inherit",
 
 };
 
-function Field({ label, children }) {
+function TextInput(props) {
 
-  return (
-<div>
-<label style={FIELD_LABEL}>{label}</label>
+  const [style, handlers] = useFocusStyle(BASE_INPUT);
 
-      {children}
-</div>
+  return <input {...props} {...handlers} style={style} />;
 
-  );
+}
+
+function SelectInput(props) {
+
+  const [style, handlers] = useFocusStyle({ ...BASE_INPUT, cursor: "pointer" });
+
+  return <select {...props} {...handlers} style={style} />;
 
 }
 
@@ -103,25 +154,19 @@ export default function ExitTrackerForm() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  const [status, setStatus] = useState(null); // { ok: bool, message: string }
+  const [error, setError] = useState(null);
 
-  const update = (key) => (e) =>
+  const [saved, setSaved] = useState(null); // holds the name just saved
 
-    setForm((f) => ({ ...f, [key]: e.target.value }));
+  const [btnHover, setBtnHover] = useState(false);
+
+  const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   const isValid =
 
-    form.movateId.trim() &&
+    form.movateId.trim() && form.name.trim() && form.lwd && form.reason &&
 
-    form.name.trim() &&
-
-    form.lwd &&
-
-    form.reason &&
-
-    form.project.trim() &&
-
-    form.lm.trim();
+    form.project.trim() && form.lm.trim();
 
   const handleSubmit = async (e) => {
 
@@ -131,7 +176,7 @@ export default function ExitTrackerForm() {
 
     setSubmitting(true);
 
-    setStatus(null);
+    setError(null);
 
     try {
 
@@ -141,23 +186,7 @@ export default function ExitTrackerForm() {
 
         headers: { "Content-Type": "text/plain;charset=utf-8" },
 
-        body: JSON.stringify({
-
-          type: "addExitRecord",
-
-          movateId: form.movateId.trim(),
-
-          name: form.name.trim(),
-
-          lwd: form.lwd,
-
-          reason: form.reason,
-
-          project: form.project.trim(),
-
-          lm: form.lm.trim(),
-
-        }),
+        body: JSON.stringify({ type: "addExitRecord", ...form }),
 
       });
 
@@ -165,19 +194,19 @@ export default function ExitTrackerForm() {
 
       if (json.status) {
 
-        setStatus({ ok: true, message: "Record saved." });
+        setSaved(form.name.trim());
 
         setForm(emptyForm);
 
       } else {
 
-        setStatus({ ok: false, message: json.message || "Save failed." });
+        setError(json.message || "Save failed.");
 
       }
 
     } catch (err) {
 
-      setStatus({ ok: false, message: err.message || "Network error." });
+      setError(err.message || "Network error.");
 
     } finally {
 
@@ -192,166 +221,204 @@ export default function ExitTrackerForm() {
 
       style={{
 
-        maxWidth: 480,
+        minHeight: "100%",
 
-        margin: "0 auto",
+        background: M.paper,
 
-        background: P.card,
+        padding: "32px 16px",
 
-        borderRadius: 10,
+        fontFamily:
 
-        padding: 20,
+          "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
 
-        boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+        display: "flex",
 
-        fontFamily: "system-ui, -apple-system, sans-serif",
+        justifyContent: "center",
 
       }}
 >
-<div style={{ fontSize: 15, fontWeight: 800, color: P.dark, marginBottom: 2 }}>
+<div
 
-        Add Exit Record
-</div>
-<div style={{ fontSize: 11, color: P.muted, marginBottom: 16 }}>
+        style={{
 
-        Capture employee separation details for tracking
-</div>
-<form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-<Field label="Movate ID">
-<input
+          width: "100%",
 
-            style={INPUT_STYLE}
+          maxWidth: 460,
 
-            value={form.movateId}
+          background: M.card,
 
-            onChange={update("movateId")}
+          borderRadius: 16,
 
-            placeholder="e.g. MOV12345"
+          overflow: "hidden",
 
-          />
-</Field>
-<Field label="Name">
-<input
+          boxShadow: "0 1px 2px rgba(20,20,30,.04), 0 12px 32px -12px rgba(20,20,30,.18)",
 
-            style={INPUT_STYLE}
+          border: `1px solid ${M.hair}`,
 
-            value={form.name}
+        }}
+>
 
-            onChange={update("name")}
-
-            placeholder="Employee name"
-
-          />
-</Field>
-<Field label="LWD (Last Working Day)">
-<input
-
-            type="date"
-
-            style={INPUT_STYLE}
-
-            value={form.lwd}
-
-            onChange={update("lwd")}
-
-          />
-</Field>
-<Field label="Reason">
-<select style={INPUT_STYLE} value={form.reason} onChange={update("reason")}>
-<option value="">Select reason…</option>
-
-            {REASON_OPTIONS.map((r) => (
-<option key={r} value={r}>
-
-                {r}
-</option>
-
-            ))}
-</select>
-</Field>
-<Field label="Project">
-<input
-
-            style={INPUT_STYLE}
-
-            value={form.project}
-
-            onChange={update("project")}
-
-            placeholder="Project name"
-
-          />
-</Field>
-<Field label="LM">
-<input
-
-            style={INPUT_STYLE}
-
-            value={form.lm}
-
-            onChange={update("lm")}
-
-            placeholder="Line manager"
-
-          />
-</Field>
-
-        {status && (
+        {/* header band */}
+<div style={{ padding: "22px 26px 20px", position: "relative", overflow: "hidden" }}>
 <div
 
             style={{
 
-              fontSize: 12,
+              position: "absolute", top: -40, right: -40, width: 160, height: 160,
 
-              fontWeight: 600,
-
-              padding: "8px 10px",
-
-              borderRadius: 6,
-
-              background: status.ok ? "#e8f5e9" : "#fdecea",
-
-              color: status.ok ? P.green : P.red,
+              borderRadius: "50%", background: GRADIENT, opacity: 0.08, filter: "blur(2px)",
 
             }}
+
+          />
+<div style={{ display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
+<Mark size={26} />
+<span
+
+              style={{
+
+                fontSize: 14, fontWeight: 800, letterSpacing: 0.2,
+
+                backgroundImage: GRADIENT, WebkitBackgroundClip: "text",
+
+                backgroundClip: "text", color: "transparent",
+
+              }}
 >
 
-            {status.message}
+              movate
+</span>
 </div>
+<div style={{ fontSize: 19, fontWeight: 700, color: M.ink, marginTop: 12, position: "relative" }}>
 
-        )}
+            Exit Record
+</div>
+<div style={{ fontSize: 13, color: M.slate, marginTop: 2, position: "relative" }}>
+
+            Log a separation for tracking and reporting
+</div>
+</div>
+<div style={{ height: 3, background: GRADIENT }} />
+
+        {/* body */}
+<div style={{ padding: 26 }}>
+
+          {saved ? (
+<div style={{ textAlign: "center", padding: "18px 4px 6px" }}>
+<div
+
+                style={{
+
+                  width: 52, height: 52, borderRadius: "50%", background: GRADIENT,
+
+                  display: "flex", alignItems: "center", justifyContent: "center",
+
+                  margin: "0 auto 16px",
+
+                }}
+>
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+<path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5"
+
+                    strokeLinecap="round" strokeLinejoin="round" />
+</svg>
+</div>
+<div style={{ fontSize: 16, fontWeight: 700, color: M.ink }}>Record saved</div>
+<div style={{ fontSize: 13, color: M.slate, marginTop: 4 }}>
+
+                {saved}'s exit has been logged.
+</div>
 <button
 
-          type="submit"
+                onClick={() => setSaved(null)}
 
-          disabled={!isValid || submitting}
+                style={{
 
-          style={{
+                  marginTop: 20, padding: "9px 18px", borderRadius: 8,
 
-            marginTop: 4,
+                  border: `1px solid ${M.hair}`, background: "#fff",
 
-            padding: "10px 0",
+                  fontSize: 13, fontWeight: 600, color: M.ink, cursor: "pointer",
 
-            borderRadius: 7,
-
-            border: "none",
-
-            fontSize: 13,
-
-            fontWeight: 700,
-
-            color: "#fff",
-
-            background: !isValid || submitting ? "#9fb3c8" : P.blue1,
-
-            cursor: !isValid || submitting ? "not-allowed" : "pointer",
-
-          }}
+                }}
 >
 
-          {submitting ? "Saving…" : "Save Record"}
+                Add another record
+</button>
+</div>
+
+          ) : (
+<form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+<Field label="Movate ID">
+<TextInput value={form.movateId} onChange={update("movateId")} placeholder="MOV12345" />
+</Field>
+<Field label="LWD" hint="last working day">
+<TextInput type="date" value={form.lwd} onChange={update("lwd")} />
+</Field>
+</div>
+<Field label="Name">
+<TextInput value={form.name} onChange={update("name")} placeholder="Employee name" />
+</Field>
+<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+<Field label="Project">
+<TextInput value={form.project} onChange={update("project")} placeholder="Project name" />
+</Field>
+<Field label="LM" hint="line manager">
+<TextInput value={form.lm} onChange={update("lm")} placeholder="Manager name" />
+</Field>
+</div>
+<Field label="Reason">
+<SelectInput value={form.reason} onChange={update("reason")}>
+<option value="">Select reason…</option>
+
+                  {REASON_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+</SelectInput>
+</Field>
+
+              {error && (
+<div style={{ fontSize: 12, fontWeight: 600, color: M.red, background: "#FDECEA",
+
+                  padding: "9px 12px", borderRadius: 8 }}>
+
+                  {error}
+</div>
+
+              )}
+<button
+
+                type="submit"
+
+                disabled={!isValid || submitting}
+
+                onMouseEnter={() => setBtnHover(true)}
+
+                onMouseLeave={() => setBtnHover(false)}
+
+                style={{
+
+                  marginTop: 4, padding: "12px 0", borderRadius: 9, border: "none",
+
+                  fontSize: 14, fontWeight: 700, color: "#fff", cursor: isValid && !submitting ? "pointer" : "not-allowed",
+
+                  backgroundImage: isValid ? GRADIENT : "none",
+
+                  background: isValid ? undefined : "#C9CBD1",
+
+                  opacity: submitting ? 0.7 : btnHover && isValid ? 0.92 : 1,
+
+                  transition: "opacity .15s",
+
+                }}
+>
+
+                {submitting ? "Saving…" : "Save record"}
 </button>
 </form>
+
+          )}
+</div>
+</div>
 </div>
 
   );
