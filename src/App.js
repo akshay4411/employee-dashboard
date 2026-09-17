@@ -2,7 +2,7 @@ import { useState } from "react";
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────
 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbxfVYY72tVANTHlO7iyNn2SfQeH0YQl-d1rsGBZaYJnC5NOiu2oiqsFNlOlCkLjIgyC/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycby9ldjWgsTJdaQf_m1mZgH3ApQrQUTp0B_AXiWDe84C0qYOp3ikTLy6pC_Sf52qLJ7L/exec";
 
 // ─── MOVATE TOKENS ─────────────────────────────────────────────────────────
 
