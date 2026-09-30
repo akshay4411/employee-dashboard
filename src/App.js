@@ -1,749 +1,943 @@
-import { useState, useRef } from "react";
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+import "./ExitTracker.css";
 
-// npm install xlsx
+// ============================================================
+// CONFIGURATION
+// ============================================================
 
-// This file has no other dependencies — charts are hand-drawn SVG.
-
-// ─── CONFIG ────────────────────────────────────────────────────────────────
-
-const GAS_URL = "https://script.google.com/macros/s/AKfycby9ldjWgsTJdaQf_m1mZgH3ApQrQUTp0B_AXiWDe84C0qYOp3ikTLy6pC_Sf52qLJ7L/exec";
-
-// ─── MOVATE TOKENS ─────────────────────────────────────────────────────────
+const GAS_URL =
+  "https://script.google.com/macros/s/AKfycby9ldjWgsTJdaQf_m1mZgH3ApQrQUTp0B_AXiWDe84C0qYOp3ikTLy6pC_Sf52qLJ7L/exec";
 
 const M = {
-
   red: "#E5342B",
-
   orange: "#F7941D",
-
   pink: "#EC1E79",
-
   ink: "#1A1B20",
-
   slate: "#5B5E68",
-
   hair: "#E7E4E0",
-
   paper: "#FAF9F7",
-
   card: "#FFFFFF",
-
   ok: "#1E8E5A",
-
 };
 
-const GRADIENT = `linear-gradient(100deg, ${M.red} 0%, ${M.orange} 52%, ${M.pink} 100%)`;
+const GRADIENT =
+  `linear-gradient(100deg, ${M.red}, ${M.orange} 52%, ${M.pink})`;
 
 const REASON_OPTIONS = ["RAM DOWN", "RESIGNED", "ABSCOND"];
 
-const REASON_COLORS = [M.red, M.orange, M.pink];
-
-const emptyForm = { movateId: "", name: "", lwd: "", reason: "", project: "", lm: "" };
-
-function post(payload) {
-
-  return fetch(GAS_URL, {
-
-    method: "POST",
-
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-
-    body: JSON.stringify(payload),
-
-  }).then((r) => r.json());
-
-}
-
-// ─── Logomark ──────────────────────────────────────────────────────────────
-
-function Mark({ size = 26 }) {
-
-  return (
-<svg width={size} height={size} viewBox="0 0 40 40" fill="none">
-<defs>
-<linearGradient id="mkGrad" x1="0" y1="40" x2="40" y2="0">
-<stop offset="0%" stopColor={M.red} />
-<stop offset="55%" stopColor={M.orange} />
-<stop offset="100%" stopColor={M.pink} />
-</linearGradient>
-</defs>
-<path
-
-        d="M3 34 L11 6 L20 24 L29 6 L37 34"
-
-        stroke="url(#mkGrad)"
-
-        strokeWidth="5.5"
-
-        strokeLinecap="round"
-
-        strokeLinejoin="round"
-
-        fill="none"
-
-      />
-</svg>
-
-  );
-
-}
-
-// ─── Shared bits ─────────────────────────────────────────────────────────
-
-function Field({ label, hint, children }) {
-
-  return (
-<label style={{ display: "block", marginBottom: 14 }}>
-<span style={{ fontSize: 12, fontWeight: 600, color: M.ink, marginBottom: 6, display: "block" }}>
-
-        {label}
-
-        {hint && <span style={{ fontWeight: 400, color: M.slate }}> · {hint}</span>}
-</span>
-
-      {children}
-</label>
-
-  );
-
-}
-
-function useFocusStyle(base) {
-
-  const [focused, setFocused] = useState(false);
-
-  const style = {
-
-    ...base,
-
-    borderColor: focused ? M.orange : M.hair,
-
-    boxShadow: focused ? `0 0 0 3px ${M.orange}22` : "none",
-
-  };
-
-  return [style, { onFocus: () => setFocused(true), onBlur: () => setFocused(false) }];
-
-}
-
-const BASE_INPUT = {
-
-  width: "100%",
-
-  padding: "10px 12px",
-
-  fontSize: 14,
-
-  border: "1px solid",
-
-  borderRadius: 8,
-
-  outline: "none",
-
-  color: M.ink,
-
-  background: "#fff",
-
-  boxSizing: "border-box",
-
-  transition: "border-color .15s, box-shadow .15s",
-
-  fontFamily: "inherit",
-
+const REASON_COLORS = {
+  "RAM DOWN": M.red,
+  RESIGNED: M.orange,
+  ABSCOND: M.pink,
 };
 
-function TextInput(props) {
+const EMPTY_FORM = {
+  movateId: "",
+  name: "",
+  lwd: "",
+  reason: "",
+  project: "",
+  lm: "",
+};
 
-  const [style, handlers] = useFocusStyle(BASE_INPUT);
+const TABS = [
+  { key: "form", label: "Add Record" },
+  { key: "bulk", label: "Bulk Upload" },
+  { key: "dash", label: "Dashboard" },
+];
 
-  return <input {...props} {...handlers} style={style} />;
+// ============================================================
+// API CLIENT
+// ============================================================
 
-}
-
-function SelectInput(props) {
-
-  const [style, handlers] = useFocusStyle({ ...BASE_INPUT, cursor: "pointer" });
-
-  return <select {...props} {...handlers} style={style} />;
-
-}
-
-function Button({ children, variant = "solid", style, ...props }) {
-
-  const base = {
-
-    padding: "12px 18px",
-
-    borderRadius: 9,
-
-    border: "none",
-
-    fontSize: 14,
-
-    fontWeight: 700,
-
-    cursor: props.disabled ? "not-allowed" : "pointer",
-
-    width: "100%",
-
-  };
-
-  const solid = { backgroundImage: props.disabled ? "none" : GRADIENT, background: props.disabled ? "#C9CBD1" : undefined, color: "#fff" };
-
-  const outline = { background: "#fff", color: M.ink, border: `1px solid ${M.hair}`, fontWeight: 600 };
-
-  return (
-<button {...props} style={{ ...base, ...(variant === "solid" ? solid : outline), ...style }}>
-
-      {children}
-</button>
-
-  );
-
-}
-
-// ─── Tab 1: Add Record ──────────────────────────────────────────────────
-
-function AddRecordTab() {
-
-  const [form, setForm] = useState(emptyForm);
-
-  const [submitting, setSubmitting] = useState(false);
-
-  const [error, setError] = useState(null);
-
-  const [saved, setSaved] = useState(null);
-
-  const update = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
-
-  const isValid = form.movateId.trim() && form.name.trim() && form.lwd && form.reason && form.project.trim() && form.lm.trim();
-
-  const handleSubmit = async (e) => {
-
-    e.preventDefault();
-
-    if (!isValid || submitting) return;
-
-    setSubmitting(true);
-
-    setError(null);
-
-    try {
-
-      const json = await post({ type: "addExitRecord", ...form });
-
-      if (json.status) {
-
-        setSaved(form.name.trim());
-
-        setForm(emptyForm);
-
-      } else {
-
-        setError(json.message || "Save failed.");
-
-      }
-
-    } catch (err) {
-
-      setError(err.message || "Network error.");
-
-    } finally {
-
-      setSubmitting(false);
-
-    }
-
-  };
-
-  if (saved) {
-
-    return (
-<div style={{ textAlign: "center", padding: "18px 4px 6px" }}>
-<div style={{ width: 52, height: 52, borderRadius: "50%", backgroundImage: GRADIENT, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-<path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-</svg>
-</div>
-<div style={{ fontSize: 16, fontWeight: 700, color: M.ink }}>Record saved</div>
-<div style={{ fontSize: 13, color: M.slate, marginTop: 4 }}>{saved}'s exit has been logged.</div>
-<Button variant="outline" style={{ marginTop: 20, width: "auto", padding: "9px 18px" }} onClick={() => setSaved(null)}>
-
-          Add another record
-</Button>
-</div>
-
-    );
-
+async function post(payload) {
+  if (!GAS_URL || !GAS_URL.endsWith("/exec")) {
+    throw new Error("Configure a valid deployed Apps Script /exec URL.");
   }
 
-  return (
-<form onSubmit={handleSubmit}>
-<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-<Field label="Movate ID">
-<TextInput value={form.movateId} onChange={update("movateId")} placeholder="MOV12345" />
-</Field>
-<Field label="LWD" hint="last working day">
-<TextInput type="date" value={form.lwd} onChange={update("lwd")} />
-</Field>
-</div>
-<Field label="Name">
-<TextInput value={form.name} onChange={update("name")} placeholder="Employee name" />
-</Field>
-<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-<Field label="Project">
-<TextInput value={form.project} onChange={update("project")} placeholder="Project name" />
-</Field>
-<Field label="LM" hint="line manager">
-<TextInput value={form.lm} onChange={update("lm")} placeholder="Manager name" />
-</Field>
-</div>
-<Field label="Reason">
-<SelectInput value={form.reason} onChange={update("reason")}>
-<option value="">Select reason…</option>
+  let response;
 
-          {REASON_OPTIONS.map((r) => (
-<option key={r} value={r}>{r}</option>
+  try {
+    response = await fetch(GAS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8",
+      },
+      body: JSON.stringify(payload),
+      redirect: "follow",
+    });
+  } catch {
+    throw new Error(
+      "Cannot connect to Google Apps Script. Check your internet, " +
+      "deployment permissions, and browser CORS/network errors."
+    );
+  }
 
-          ))}
-</SelectInput>
-</Field>
+  if (!response.ok) {
+    throw new Error(`Backend returned HTTP ${response.status}.`);
+  }
 
-      {error && (
-<div style={{ fontSize: 12, fontWeight: 600, color: M.red, background: "#FDECEA", padding: "9px 12px", borderRadius: 8, marginBottom: 14 }}>
+  let result;
 
-          {error}
-</div>
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(
+      "The backend did not return readable JSON. " +
+      "Check the deployment URL and Google Apps Script permissions."
+    );
+  }
 
-      )}
-<Button type="submit" disabled={!isValid || submitting}>
+  if (!result || typeof result.status !== "boolean") {
+    throw new Error("Unexpected backend response format.");
+  }
 
-        {submitting ? "Saving…" : "Save record"}
-</Button>
-</form>
-
-  );
-
+  return result;
 }
 
-// ─── Tab 2: Bulk Upload ──────────────────────────────────────────────────
+// ============================================================
+// UTILITIES
+// ============================================================
+
+function normalizeDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = XLSX.SSF.parse_date_code(value);
+
+    if (date) {
+      return [
+        date.y,
+        String(date.m).padStart(2, "0"),
+        String(date.d).padStart(2, "0"),
+      ].join("-");
+    }
+  }
+
+  const text = String(value ?? "").trim();
+
+  if (!text) return "";
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  // Handle DD/MM/YYYY and DD-MM-YYYY explicitly.
+  const match = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+
+  if (match) {
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+
+    const date = new Date(year, month - 1, day);
+
+    if (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    ) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  return "";
+}
 
 function normalizeRow(row) {
+  const columns = {};
+
+  Object.entries(row).forEach(([key, value]) => {
+    const normalizedKey = key.trim().toLowerCase().replace(/[^a-z]/g, "");
+    columns[normalizedKey] = value;
+  });
 
   const get = (...keys) => {
-
-    for (const k of Object.keys(row)) {
-
-      const nk = k.trim().toLowerCase().replace(/[^a-z]/g, "");
-
-      if (keys.includes(nk)) return String(row[k]).trim();
-
+    for (const key of keys) {
+      if (columns[key] !== undefined && columns[key] !== null) {
+        return String(columns[key]).trim();
+      }
     }
 
     return "";
-
   };
 
   return {
-
     movateId: get("movateid", "id"),
-
     name: get("name", "employeename"),
-
-    lwd: get("lwd", "lastworkingday"),
-
+    lwd: normalizeDate(
+      columns.lwd ?? columns.lastworkingday ?? ""
+    ),
     reason: get("reason").toUpperCase(),
-
     project: get("project"),
-
     lm: get("lm", "linemanager", "manager"),
-
   };
-
 }
 
-function BulkUploadTab() {
+function validateRecord(record) {
+  const required = [
+    ["movateId", "Movate ID"],
+    ["name", "Name"],
+    ["lwd", "LWD"],
+    ["reason", "Reason"],
+    ["project", "Project"],
+    ["lm", "Line Manager"],
+  ];
 
-  const [rows, setRows] = useState([]);
+  for (const [key, label] of required) {
+    if (!String(record[key] ?? "").trim()) {
+      return `${label} is required.`;
+    }
+  }
 
-  const [uploading, setUploading] = useState(false);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(record.lwd)) {
+    return "LWD must be a valid date.";
+  }
 
-  const [error, setError] = useState(null);
+  if (!REASON_OPTIONS.includes(record.reason)) {
+    return "Select a valid exit reason.";
+  }
 
-  const [okMsg, setOkMsg] = useState(null);
+  return "";
+}
 
-  const fileInput = useRef(null);
+function downloadTemplate() {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["Movate ID", "Name", "LWD", "Reason", "Project", "LM"],
+    ["MOV12345", "Sample Employee", "2026-09-30", "RESIGNED", "Project A", "Manager Name"],
+  ]);
 
-  const handleFile = (file) => {
+  const workbook = XLSX.utils.book_new();
 
-    setError(null);
+  XLSX.utils.book_append_sheet(workbook, sheet, "Exit Records");
 
-    setOkMsg(null);
+  XLSX.writeFile(workbook, "Movate_Exit_Tracker_Template.xlsx");
+}
 
-    const reader = new FileReader();
+// ============================================================
+// SHARED COMPONENTS
+// ============================================================
 
-    reader.onload = (e) => {
+function Mark({ size = 30 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      aria-label="Movate Exit Tracker"
+      role="img"
+    >
+      <defs>
+        <linearGradient id="movateMarkGradient" x1="0" y1="40" x2="40" y2="0">
+          <stop offset="0%" stopColor={M.red} />
+          <stop offset="55%" stopColor={M.orange} />
+          <stop offset="100%" stopColor={M.pink} />
+        </linearGradient>
+      </defs>
+      <path
+        d="M3 34 L11 6 L20 24 L29 6 L37 34"
+        stroke="url(#movateMarkGradient)"
+        strokeWidth="5.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-      try {
+function Field({ label, hint, children }) {
+  return (
+    <label className="et-field">
+      <span className="et-field-label">
+        {label}
+        {hint && <span className="et-field-hint"> · {hint}</span>}
+      </span>
+      {children}
+    </label>
+  );
+}
 
-        const wb = XLSX.read(e.target.result, { type: "array", cellDates: true });
+function Input({ className = "", ...props }) {
+  return <input className={`et-input ${className}`} {...props} />;
+}
 
-        const sheet = wb.Sheets[wb.SheetNames[0]];
+function Select({ className = "", ...props }) {
+  return <select className={`et-input ${className}`} {...props} />;
+}
 
-        const parsed = XLSX.utils.sheet_to_json(sheet, { defval: "" }).map(normalizeRow).filter((r) => r.movateId || r.name);
+function Button({
+  children,
+  variant = "primary",
+  className = "",
+  ...props
+}) {
+  return (
+    <button
+      className={`et-button et-button-${variant} ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
 
-        setRows(parsed);
+function Notice({ type = "error", children }) {
+  if (!children) return null;
 
-      } catch (err) {
+  return (
+    <div className={`et-notice et-notice-${type}`} role="status">
+      {children}
+    </div>
+  );
+}
 
-        setRows([]);
+function Spinner() {
+  return <span className="et-spinner" aria-label="Loading" />;
+}
 
-        setError("Could not read that file: " + err.message);
+// ============================================================
+// ADD RECORD
+// ============================================================
 
+function AddRecordTab() {
+  const [form, setForm] = useState(EMPTY_FORM);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+
+  const update = (key) => (event) => {
+    setForm((previous) => ({
+      ...previous,
+      [key]: event.target.value,
+    }));
+    setError("");
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (submitting) return;
+
+    const validationError = validateRecord(form);
+
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const result = await post({
+        type: "addExitRecord",
+        ...form,
+      });
+
+      if (!result.status) {
+        throw new Error(result.message || "Unable to save record.");
       }
 
-    };
+      setSaved(form.name.trim());
+      setForm(EMPTY_FORM);
+    } catch (err) {
+      setError(err.message || "Unable to save record.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-    reader.readAsArrayBuffer(file);
+  if (saved) {
+    return (
+      <section className="et-success">
+        <div className="et-success-icon">✓</div>
+        <h3>Record saved successfully</h3>
+        <p>{saved}'s exit record has been added.</p>
+        <Button
+          variant="secondary"
+          onClick={() => setSaved("")}
+        >
+          Add another record
+        </Button>
+      </section>
+    );
+  }
 
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="et-grid-2">
+        <Field label="Movate ID">
+          <Input
+            value={form.movateId}
+            onChange={update("movateId")}
+            placeholder="MOV12345"
+            autoComplete="off"
+            required
+          />
+        </Field>
+
+        <Field label="Last Working Day" hint="LWD">
+          <Input
+            type="date"
+            value={form.lwd}
+            onChange={update("lwd")}
+            required
+          />
+        </Field>
+      </div>
+
+      <Field label="Employee Name">
+        <Input
+          value={form.name}
+          onChange={update("name")}
+          placeholder="Enter employee name"
+          required
+        />
+      </Field>
+
+      <div className="et-grid-2">
+        <Field label="Project">
+          <Input
+            value={form.project}
+            onChange={update("project")}
+            placeholder="Project name"
+            required
+          />
+        </Field>
+
+        <Field label="Line Manager">
+          <Input
+            value={form.lm}
+            onChange={update("lm")}
+            placeholder="Manager name"
+            required
+          />
+        </Field>
+      </div>
+
+      <Field label="Exit Reason">
+        <Select
+          value={form.reason}
+          onChange={update("reason")}
+          required
+        >
+          <option value="">Select a reason</option>
+          {REASON_OPTIONS.map((reason) => (
+            <option key={reason} value={reason}>
+              {reason}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Notice>{error}</Notice>
+
+      <Button type="submit" disabled={submitting}>
+        {submitting ? <><Spinner /> Saving record…</> : "Save exit record"}
+      </Button>
+    </form>
+  );
+}
+
+// ============================================================
+// BULK UPLOAD
+// ============================================================
+
+function BulkUploadTab() {
+  const [rows, setRows] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [fileName, setFileName] = useState("");
+  const fileInput = useRef(null);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+
+    setError("");
+    setMessage("");
+    setRows([]);
+    setFileName("");
+    setReading(true);
+
+    try {
+      const extension = file.name.split(".").pop().toLowerCase();
+
+      if (!["xlsx", "xls", "csv"].includes(extension)) {
+        throw new Error("Choose an Excel (.xlsx, .xls) or CSV file.");
+      }
+
+      const buffer = await file.arrayBuffer();
+
+      const workbook = XLSX.read(buffer, {
+        type: "array",
+        cellDates: true,
+      });
+
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+
+      if (!firstSheet) {
+        throw new Error("The selected file contains no worksheet.");
+      }
+
+      const parsed = XLSX.utils.sheet_to_json(firstSheet, {
+        defval: "",
+        raw: true,
+      });
+
+      if (!parsed.length) {
+        throw new Error("The selected worksheet contains no records.");
+      }
+
+      const normalized = parsed
+        .map(normalizeRow)
+        .filter((row) =>
+          Object.values(row).some((value) => String(value).trim())
+        );
+
+      if (!normalized.length) {
+        throw new Error("No employee records were found.");
+      }
+
+      const errors = normalized
+        .map((row, index) => ({
+          row: index + 2,
+          error: validateRecord(row),
+        }))
+        .filter((item) => item.error);
+
+      if (errors.length) {
+        const preview = errors
+          .slice(0, 5)
+          .map((item) => `Excel row ${item.row}: ${item.error}`)
+          .join("\n");
+
+        throw new Error(
+          `${errors.length} invalid row(s) found.\n${preview}` +
+          (errors.length > 5 ? "\nMore errors were found." : "")
+        );
+      }
+
+      if (normalized.length > 500) {
+        throw new Error("Upload a maximum of 500 records at a time.");
+      }
+
+      setRows(normalized);
+      setFileName(file.name);
+    } catch (err) {
+      setError(err.message || "Unable to read the selected file.");
+    } finally {
+      setReading(false);
+
+      if (fileInput.current) {
+        fileInput.current.value = "";
+      }
+    }
   };
 
   const upload = async () => {
+    if (!rows.length || uploading) return;
 
     setUploading(true);
-
-    setError(null);
+    setError("");
+    setMessage("");
 
     try {
+      const result = await post({
+        type: "addExitRecordsBulk",
+        records: rows,
+      });
 
-      const json = await post({ type: "addExitRecordsBulk", records: rows });
-
-      if (json.status) {
-
-        setOkMsg(`Saved ${json.count ?? rows.length} records to the sheet.`);
-
-        setRows([]);
-
-      } else {
-
-        setError(json.message || "Bulk save failed.");
-
+      if (!result.status) {
+        throw new Error(result.message || "Bulk upload failed.");
       }
 
+      setMessage(`${result.count ?? rows.length} records saved successfully.`);
+      setRows([]);
+      setFileName("");
     } catch (err) {
-
-      setError(err.message || "Network error.");
-
+      setError(err.message || "Unable to upload records.");
     } finally {
-
       setUploading(false);
-
     }
-
   };
 
   return (
-<div>
-<div
-
-        onClick={() => fileInput.current.click()}
-
-        onDragOver={(e) => e.preventDefault()}
-
-        onDrop={(e) => {
-
-          e.preventDefault();
-
-          if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-
+    <section>
+      <div
+        className="et-dropzone"
+        role="button"
+        tabIndex={0}
+        onClick={() => fileInput.current?.click()}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            fileInput.current?.click();
+          }
         }}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          handleFile(event.dataTransfer.files?.[0]);
+        }}
+      >
+        <div className="et-upload-icon">↑</div>
+        <strong>Import employee records</strong>
+        <p>Drop your file here or browse your computer</p>
+        <span>Excel and CSV · Maximum 500 records</span>
 
-        style={{ border: `2px dashed ${M.hair}`, borderRadius: 12, padding: "26px 12px", textAlign: "center", cursor: "pointer" }}
->
-<div style={{ fontWeight: 600, fontSize: 14 }}>Drop an Excel file here, or tap to browse</div>
-<div style={{ fontSize: 13, color: M.slate, marginTop: 6 }}>Columns: Movate ID · Name · LWD · Reason · Project · LM</div>
-<input
-
+        <input
           ref={fileInput}
-
           type="file"
-
           accept=".xlsx,.xls,.csv"
-
-          style={{ display: "none" }}
-
-          onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
-
+          hidden
+          onChange={(event) => handleFile(event.target.files?.[0])}
         />
-</div>
+      </div>
 
-      {rows.length > 0 && (
-<>
-<div style={{ fontSize: 13, color: M.slate, margin: "14px 0 4px" }}>{rows.length} rows parsed</div>
-<div style={{ overflowX: "auto", border: `1px solid ${M.hair}`, borderRadius: 10 }}>
-<table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-<thead>
-<tr>
+      <div className="et-template-row">
+        <span>Need the correct column format?</span>
+        <button
+          className="et-text-button"
+          type="button"
+          onClick={downloadTemplate}
+        >
+          Download template
+        </button>
+      </div>
 
-                  {["Movate ID", "Name", "LWD", "Reason", "Project", "LM"].map((h) => (
-<th key={h} style={{ textAlign: "left", padding: "6px 8px", borderBottom: `1px solid ${M.hair}`, whiteSpace: "nowrap" }}>{h}</th>
-
-                  ))}
-</tr>
-</thead>
-<tbody>
-
-                {rows.slice(0, 8).map((r, i) => (
-<tr key={i}>
-
-                    {[r.movateId, r.name, r.lwd, r.reason, r.project, r.lm].map((v, j) => (
-<td key={j} style={{ padding: "6px 8px", borderBottom: `1px solid ${M.hair}`, whiteSpace: "nowrap" }}>{v}</td>
-
-                    ))}
-</tr>
-
-                ))}
-</tbody>
-</table>
-</div>
-</>
-
+      {reading && (
+        <div className="et-loading"><Spinner /> Validating spreadsheet…</div>
       )}
 
-      {error && <div style={{ fontSize: 12, fontWeight: 600, color: M.red, background: "#FDECEA", padding: "9px 12px", borderRadius: 8, marginTop: 14 }}>{error}</div>}
-
-      {okMsg && <div style={{ fontSize: 12, fontWeight: 600, color: M.ok, background: "#E7F6EE", padding: "9px 12px", borderRadius: 8, marginTop: 14 }}>{okMsg}</div>}
+      {fileName && rows.length > 0 && (
+        <div className="et-preview-heading">
+          <div>
+            <strong>{fileName}</strong>
+            <p>{rows.length} validated records ready to upload</p>
+          </div>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setRows([]);
+              setFileName("");
+              setError("");
+            }}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
 
       {rows.length > 0 && (
-<Button style={{ marginTop: 14 }} disabled={uploading} onClick={upload}>
-
-          {uploading ? "Uploading…" : `Upload ${rows.length} records`}
-</Button>
-
+        <div className="et-table-wrap">
+          <table className="et-table">
+            <thead>
+              <tr>
+                {["Movate ID", "Name", "LWD", "Reason", "Project", "LM"].map(
+                  (heading) => <th key={heading}>{heading}</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 10).map((row, index) => (
+                <tr key={`${row.movateId}-${index}`}>
+                  <td>{row.movateId}</td>
+                  <td>{row.name}</td>
+                  <td>{row.lwd}</td>
+                  <td>{row.reason}</td>
+                  <td>{row.project}</td>
+                  <td>{row.lm}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {rows.length > 10 && (
+            <p className="et-table-note">
+              Showing 10 of {rows.length} records.
+            </p>
+          )}
+        </div>
       )}
-</div>
 
+      <Notice>{error}</Notice>
+      <Notice type="success">{message}</Notice>
+
+      {rows.length > 0 && (
+        <Button
+          className="et-upload-action"
+          disabled={uploading || reading}
+          onClick={upload}
+        >
+          {uploading
+            ? <><Spinner /> Uploading records…</>
+            : `Upload ${rows.length} records`}
+        </Button>
+      )}
+    </section>
   );
-
 }
 
-// ─── Tab 3: Dashboard ────────────────────────────────────────────────────
+// ============================================================
+// CHARTS
+// ============================================================
 
-function BarChart({ data, colors }) {
-
-  const max = Math.max(1, ...data.map((d) => d.value));
-
-  const w = 400, h = 160, barW = w / data.length - 20;
+function BarChart({ data }) {
+  const max = Math.max(1, ...data.map((item) => item.value));
 
   return (
-<svg viewBox={`0 0 ${w} ${h + 24}`} width="100%">
-
-      {data.map((d, i) => {
-
-        const barH = (d.value / max) * h;
-
-        const x = i * (w / data.length) + 10;
-
-        return (
-<g key={d.label}>
-<rect x={x} y={h - barH} width={barW} height={barH} rx={4} fill={colors[i % colors.length]} />
-<text x={x + barW / 2} y={h + 16} fontSize="11" fill={M.slate} textAnchor="middle">{d.label}</text>
-<text x={x + barW / 2} y={h - barH - 6} fontSize="11" fontWeight="700" fill={M.ink} textAnchor="middle">{d.value}</text>
-</g>
-
-        );
-
-      })}
-</svg>
-
+    <div className="et-chart">
+      {data.map((item) => (
+        <div className="et-bar-row" key={item.label}>
+          <span className="et-bar-label">{item.label}</span>
+          <div className="et-bar-track">
+            <div
+              className="et-bar-fill"
+              style={{
+                width: `${(item.value / max) * 100}%`,
+                background: REASON_COLORS[item.label],
+              }}
+            />
+          </div>
+          <strong>{item.value}</strong>
+        </div>
+      ))}
+    </div>
   );
-
 }
 
 function LineChart({ data }) {
+  if (!data.length) {
+    return <div className="et-empty-chart">No monthly data available.</div>;
+  }
 
-  const max = Math.max(1, ...data.map((d) => d.value));
-
-  const w = 400, h = 160, step = data.length > 1 ? w / (data.length - 1) : 0;
-
-  const points = data.map((d, i) => `${i * step},${h - (d.value / max) * h}`).join(" ");
+  const max = Math.max(1, ...data.map((item) => item.value));
 
   return (
-<svg viewBox={`0 0 ${w} ${h + 24}`} width="100%">
-<polyline points={points} fill="none" stroke={M.orange} strokeWidth="2.5" />
-
-      {data.map((d, i) => (
-<g key={d.label}>
-<circle cx={i * step} cy={h - (d.value / max) * h} r="3.5" fill={M.orange} />
-<text x={i * step} y={h + 16} fontSize="10" fill={M.slate} textAnchor="middle">{d.label}</text>
-</g>
-
+    <div className="et-month-chart">
+      {data.map((item) => (
+        <div className="et-month-column" key={item.label}>
+          <strong>{item.value}</strong>
+          <div className="et-month-track">
+            <div
+              className="et-month-fill"
+              style={{ height: `${Math.max(4, (item.value / max) * 100)}%` }}
+            />
+          </div>
+          <span>{item.label}</span>
+        </div>
       ))}
-</svg>
-
+    </div>
   );
-
 }
 
+// ============================================================
+// DASHBOARD
+// ============================================================
+
 function DashboardTab() {
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [lastUpdated, setLastUpdated] = useState(null);
 
-  const [records, setRecords] = useState(null);
-
-  const [error, setError] = useState(null);
-
-  const load = async () => {
-
-    setError(null);
+  const loadRecords = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
     try {
+      const result = await post({ type: "getExitRecords" });
 
-      const json = await post({ type: "getExitRecords" });
+      if (!result.status) {
+        throw new Error(result.message || "Unable to load dashboard.");
+      }
 
-      if (!json.status) throw new Error(json.message || "Could not load records.");
-
-      setRecords(json.records || []);
-
+      setRecords(Array.isArray(result.records) ? result.records : []);
+      setLastUpdated(new Date());
     } catch (err) {
-
-      setError(err.message);
-
+      setError(err.message || "Unable to load records.");
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
-  };
+  useEffect(() => {
+    loadRecords();
+  }, [loadRecords]);
 
-  if (records === null && !error) {
-
-    load();
-
-    return <div style={{ textAlign: "center", padding: 24, color: M.slate, fontSize: 13 }}>Loading dashboard…</div>;
-
+  if (loading) {
+    return (
+      <div className="et-dashboard-loading">
+        <Spinner /> Loading exit analytics…
+      </div>
+    );
   }
 
   if (error) {
-
     return (
-<div>
-<div style={{ fontSize: 12, fontWeight: 600, color: M.red, background: "#FDECEA", padding: "9px 12px", borderRadius: 8 }}>{error}</div>
-<Button variant="outline" style={{ marginTop: 14 }} onClick={() => { setRecords(null); setError(null); }}>Retry</Button>
-</div>
-
+      <div>
+        <Notice>{error}</Notice>
+        <Button variant="secondary" onClick={loadRecords}>
+          Retry connection
+        </Button>
+      </div>
     );
-
   }
 
-  const byReason = Object.fromEntries(REASON_OPTIONS.map((r) => [r, 0]));
+  const byReason = Object.fromEntries(
+    REASON_OPTIONS.map((reason) => [reason, 0])
+  );
 
   const byMonth = {};
 
-  records.forEach((r) => {
+  records.forEach((record) => {
+    if (Object.hasOwn(byReason, record.reason)) {
+      byReason[record.reason]++;
+    }
 
-    if (byReason[r.reason] !== undefined) byReason[r.reason]++;
+    const month = String(record.lwd || "").slice(0, 7);
 
-    const m = (r.lwd || "").slice(0, 7);
-
-    if (m) byMonth[m] = (byMonth[m] || 0) + 1;
-
+    if (/^\d{4}-\d{2}$/.test(month)) {
+      byMonth[month] = (byMonth[month] || 0) + 1;
+    }
   });
 
   const months = Object.keys(byMonth).sort();
+  const latestMonth = months[months.length - 1] || "—";
+
+  const monthlyData = months.slice(-12).map((month) => ({
+    label: month,
+    value: byMonth[month],
+  }));
 
   return (
-<div>
-<div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-<div style={{ border: `1px solid ${M.hair}`, borderRadius: 12, padding: 14, textAlign: "center" }}>
-<b style={{ display: "block", fontSize: 22 }}>{records.length}</b>
-<span style={{ fontSize: 11, color: M.slate }}>Total exits logged</span>
-</div>
-<div style={{ border: `1px solid ${M.hair}`, borderRadius: 12, padding: 14, textAlign: "center" }}>
-<b style={{ display: "block", fontSize: 22 }}>{months.length ? months[months.length - 1] : "—"}</b>
-<span style={{ fontSize: 11, color: M.slate }}>Most recent month</span>
-</div>
-</div>
-<div style={{ fontSize: 13, color: M.slate, marginBottom: 6 }}>Exits by reason</div>
-<BarChart data={REASON_OPTIONS.map((r) => ({ label: r, value: byReason[r] }))} colors={REASON_COLORS} />
-<div style={{ fontSize: 13, color: M.slate, margin: "18px 0 6px" }}>Exits by month</div>
-<LineChart data={months.map((m) => ({ label: m, value: byMonth[m] }))} />
-<Button variant="outline" style={{ marginTop: 18 }} onClick={() => setRecords(null)}>Refresh data</Button>
-</div>
+    <section>
+      <div className="et-dashboard-heading">
+        <div>
+          <h2>Exit overview</h2>
+          <p>Employee separation trends and records</p>
+        </div>
+        <Button
+          variant="secondary"
+          className="et-refresh"
+          onClick={loadRecords}
+        >
+          ↻ Refresh
+        </Button>
+      </div>
 
+      <div className="et-stat-grid">
+        <div className="et-stat-card">
+          <span>Total exits</span>
+          <strong>{records.length}</strong>
+          <small>All recorded separations</small>
+        </div>
+        <div className="et-stat-card">
+          <span>Latest LWD month</span>
+          <strong className="et-stat-month">{latestMonth}</strong>
+          <small>Based on last working day</small>
+        </div>
+      </div>
+
+      <div className="et-panel">
+        <h3>Exits by reason</h3>
+        <p className="et-panel-description">Distribution across recorded reasons</p>
+        <BarChart
+          data={REASON_OPTIONS.map((reason) => ({
+            label: reason,
+            value: byReason[reason],
+          }))}
+        />
+      </div>
+
+      <div className="et-panel">
+        <h3>Monthly exit trend</h3>
+        <p className="et-panel-description">
+          Up to the last 12 months with recorded LWDs
+        </p>
+        <LineChart data={monthlyData} />
+      </div>
+
+      <div className="et-dashboard-footer">
+        <span>
+          {lastUpdated
+            ? `Updated ${lastUpdated.toLocaleTimeString()}`
+            : "Not yet refreshed"}
+        </span>
+        <span>{records.length} records loaded</span>
+      </div>
+    </section>
   );
-
 }
 
-// ─── App shell ───────────────────────────────────────────────────────────
-
-const TABS = [
-
-  { key: "form", label: "Add Record" },
-
-  { key: "bulk", label: "Bulk Upload" },
-
-  { key: "dash", label: "Dashboard" },
-
-];
+// ============================================================
+// APPLICATION SHELL
+// ============================================================
 
 export default function ExitTrackerApp() {
-
   const [tab, setTab] = useState("form");
 
   return (
-<div style={{ minHeight: "100%", background: M.paper, padding: "32px 16px", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif", display: "flex", justifyContent: "center" }}>
-<div style={{ width: "100%", maxWidth: 460, background: M.card, borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 2px rgba(20,20,30,.04), 0 12px 32px -12px rgba(20,20,30,.18)", border: `1px solid ${M.hair}` }}>
-<div style={{ padding: "22px 26px 20px", position: "relative", overflow: "hidden" }}>
-<div style={{ position: "absolute", top: -40, right: -40, width: 160, height: 160, borderRadius: "50%", backgroundImage: GRADIENT, opacity: 0.08, filter: "blur(2px)" }} />
-<div style={{ display: "flex", alignItems: "center", gap: 10, position: "relative" }}>
-<Mark size={26} />
-<span style={{ fontSize: 14, fontWeight: 800, letterSpacing: 0.2, backgroundImage: GRADIENT, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>movate</span>
-</div>
-<div style={{ fontSize: 19, fontWeight: 700, color: M.ink, marginTop: 12, position: "relative" }}>Exit Tracker</div>
-<div style={{ fontSize: 13, color: M.slate, marginTop: 2, position: "relative" }}>Log separations, bulk import, and view trends</div>
-</div>
-<div style={{ height: 3, backgroundImage: GRADIENT }} />
-<div style={{ display: "flex", gap: 4, padding: "16px 26px 0" }}>
+    <main className="et-page">
+      <div className="et-app">
+        <header className="et-header">
+          <div className="et-brand">
+            <Mark />
+            <span>movate</span>
+            <span className="et-brand-divider" />
+            <span className="et-brand-label">PEOPLE OPERATIONS</span>
+          </div>
 
-          {TABS.map((t) => (
-<button
+          <div className="et-title-row">
+            <div>
+              <h1>Exit Tracker</h1>
+              <p>
+                Manage employee separations, import records, and review trends.
+              </p>
+            </div>
+            <div className="et-status-badge">
+              <span /> Tracker
+            </div>
+          </div>
+        </header>
 
-              key={t.key}
+        <div className="et-gradient-line" />
 
-              onClick={() => setTab(t.key)}
-
-              style={{
-
-                flex: 1, textAlign: "center", padding: "10px 8px", fontSize: 13, fontWeight: 600,
-
-                borderRadius: 8, cursor: "pointer",
-
-                border: tab === t.key ? "none" : `1px solid ${M.hair}`,
-
-                backgroundImage: tab === t.key ? GRADIENT : "none",
-
-                background: tab === t.key ? undefined : "transparent",
-
-                color: tab === t.key ? "#fff" : M.slate,
-
-              }}
->
-
-              {t.label}
-</button>
-
+        <nav className="et-tabs" aria-label="Exit Tracker sections">
+          {TABS.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className={`et-tab ${tab === item.key ? "active" : ""}`}
+              aria-current={tab === item.key ? "page" : undefined}
+              onClick={() => setTab(item.key)}
+            >
+              {item.label}
+            </button>
           ))}
-</div>
-<div style={{ padding: 26 }}>
+        </nav>
 
+        <div className="et-content">
           {tab === "form" && <AddRecordTab />}
-
           {tab === "bulk" && <BulkUploadTab />}
-
           {tab === "dash" && <DashboardTab />}
-</div>
-</div>
-</div>
+        </div>
 
+        <footer className="et-footer">
+          <span>Movate · Exit Tracker</span>
+          <span>Employee records management</span>
+        </footer>
+      </div>
+    </main>
   );
-
 }
- 
