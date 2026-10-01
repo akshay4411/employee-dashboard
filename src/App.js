@@ -273,7 +273,7 @@ select.et-input {
 // ============================================================
 
 const GAS_URL =
-  "https://script.google.com/macros/s/AKfycby9ldjWgsTJdaQf_m1mZgH3ApQrQUTp0B_AXiWDe84C0qYOp3ikTLy6pC_Sf52qLJ7L/exec";
+  "https://script.google.com/macros/s/AKfycbydaLHA8HCYePb2P5WpVpTJnxfTQJxTYQWfqA5nSLHI4vgifsFHz08OrSQtqHmnl1yNUA/exec";
 
 const M = {
   red: "#E5342B",
